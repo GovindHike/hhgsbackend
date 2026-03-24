@@ -29,8 +29,8 @@ export const createApp = () => {
     optionsSuccessStatus: 204
   };
 
-  app.use(cors(corsOptions));
-  app.options("*", cors(corsOptions));
+  app.use(cors());
+  app.options("*", cors());
   app.use(helmet());
   app.use(compression());
   app.use(express.json({ limit: "2mb" }));
