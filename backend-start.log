@@ -108,3 +108,4 @@ Backend server running on port 5000
 [0mGET /api/leaves?page=1&limit=5 [36m304[0m 76.163 ms - -[0m
 [0mGET /api/notifications?page=1&limit=8 [36m304[0m 70.135 ms - -[0m
 [0mGET /api/assets?page=1&limit=50 [36m304[0m 61.675 ms - -[0m
+[0mGET /api/settings/theme [32m200[0m 104.018 ms - 26[0m
