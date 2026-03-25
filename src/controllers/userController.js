@@ -32,9 +32,14 @@ export const createUser = async (req, res) => {
     email: user.email,
     password: temporaryPassword
   });
-  await sendEmail({ to: user.email, ...mail });
+  res.status(StatusCodes.CREATED).json({
+    success: true,
+    data: user
+  });
 
-  res.status(StatusCodes.CREATED).json({ user });
+  sendEmail({ to: user.email, ...mail }).catch((error) => {
+    console.error(`Failed to send first-time password email to ${user.email}:`, error.message);
+  });
 };
 
 export const getUsers = async (req, res) => {

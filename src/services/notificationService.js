@@ -8,6 +8,8 @@ export const createNotification = async ({
   type,
   entityType = "",
   entityId = null,
+  referenceId = null,
+  redirectUrl = "",
   createdBy = null
 }) => {
   const uniqueRecipients = [...new Set(recipients.map((id) => String(id)))];
@@ -22,6 +24,8 @@ export const createNotification = async ({
     type,
     entityType,
     entityId,
+    referenceId: referenceId || entityId,
+    redirectUrl,
     createdBy
   });
 

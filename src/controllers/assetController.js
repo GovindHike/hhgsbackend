@@ -124,3 +124,13 @@ export const recordAssetMovement = async (req, res) => {
 
   res.status(StatusCodes.OK).json({ asset });
 };
+
+export const deleteAsset = async (req, res) => {
+  const asset = await Asset.findById(req.params.id);
+  if (!asset) {
+    throw new AppError("Asset not found", StatusCodes.NOT_FOUND);
+  }
+
+  await asset.deleteOne();
+  res.status(StatusCodes.OK).json({ message: "Asset deleted successfully" });
+};

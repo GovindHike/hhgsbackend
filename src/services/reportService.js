@@ -39,8 +39,10 @@ const buildProjectSummary = (tasks) => {
 };
 
 export const getDailyProjectStatusReportPayload = async () => {
+  const todayStart = dayjs().startOf("day").toDate();
+  const todayEnd = dayjs().endOf("day").toDate();
   const [tasks, leaves, employees, teamLeads, admins] = await Promise.all([
-    Task.find()
+    Task.find({ taskDate: { $gte: todayStart, $lte: todayEnd } })
       .populate({
         path: "assignedTo",
         select: "name team",

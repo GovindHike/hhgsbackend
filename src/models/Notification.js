@@ -8,6 +8,8 @@ const notificationSchema = new mongoose.Schema(
     type: { type: String, required: true, trim: true, index: true },
     entityType: { type: String, trim: true },
     entityId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    referenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    redirectUrl: { type: String, trim: true, default: "" },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }]
   },

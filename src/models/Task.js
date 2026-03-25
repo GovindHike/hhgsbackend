@@ -9,6 +9,7 @@ const taskSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     status: { type: String, enum: TASK_STATUSES, default: "Pending", index: true },
+    taskDate: { type: Date, required: true, index: true, default: Date.now },
     dueDate: { type: Date, default: null, index: true },
     isDailyTask: { type: Boolean, default: false }
   },

@@ -79,6 +79,7 @@ export const taskValidators = {
     description: Joi.string().allow("", null),
     projectName: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
+    taskDate: Joi.date().required(),
     dueDate: Joi.date().allow(null),
     isDailyTask: Joi.boolean().default(false)
   }),

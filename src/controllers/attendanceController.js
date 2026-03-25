@@ -36,6 +36,8 @@ export const checkIn = async (req, res) => {
     type: "attendance_checked_in",
     entityType: "Attendance",
     entityId: nextAttendance._id,
+    referenceId: nextAttendance._id,
+    redirectUrl: "/attendance",
     createdBy: req.user._id
   });
 
@@ -61,6 +63,8 @@ export const checkOut = async (req, res) => {
     type: "attendance_checked_out",
     entityType: "Attendance",
     entityId: attendance._id,
+    referenceId: attendance._id,
+    redirectUrl: "/attendance",
     createdBy: req.user._id
   });
 
@@ -74,7 +78,9 @@ export const notifyAutoCheckout = async (userId, attendanceId) => {
     message: "Your attendance session was auto checked-out at 11:59 PM.",
     type: "attendance_auto_checkout",
     entityType: "Attendance",
-    entityId: attendanceId
+    entityId: attendanceId,
+    referenceId: attendanceId,
+    redirectUrl: "/attendance"
   });
 };
 

@@ -39,6 +39,8 @@ export const createLeave = async (req, res) => {
       type: "leave_requested",
       entityType: "Leave",
       entityId: leave._id,
+      referenceId: leave._id,
+      redirectUrl: "/leaves",
       createdBy: req.user._id
     });
   }
@@ -52,6 +54,8 @@ export const createLeave = async (req, res) => {
       type: "leave_requested",
       entityType: "Leave",
       entityId: leave._id,
+      referenceId: leave._id,
+      redirectUrl: "/leaves",
       createdBy: req.user._id
     });
   }
@@ -61,16 +65,39 @@ export const createLeave = async (req, res) => {
 
 export const getLeaves = async (req, res) => {
   const filter = {};
+  const scope = req.query.scope;
 
   if (req.user.role === ROLES.EMPLOYEE) {
     filter.user = req.user._id;
   } else if (req.user.role === ROLES.TEAM_LEAD) {
     const teamMembers = await User.find({ team: req.user.team }).select("_id");
-    filter.user = { $in: teamMembers.map((member) => member._id).concat(req.user._id) };
+    const memberIds = teamMembers.map((member) => member._id);
+
+    if (scope === "self") {
+      filter.user = req.user._id;
+    } else if (scope === "team") {
+      filter.user = { $in: memberIds.filter((memberId) => String(memberId) !== String(req.user._id)) };
+    } else {
+      filter.user = { $in: memberIds.concat(req.user._id) };
+    }
+  } else if (req.query.userId) {
+    filter.user = req.query.userId;
   }
 
   if (req.query.status) {
     filter.status = req.query.status;
+  }
+
+  if (req.query.dateFrom || req.query.dateTo) {
+    const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom) : null;
+    const dateTo = req.query.dateTo ? new Date(req.query.dateTo) : null;
+
+    if (dateFrom || dateTo) {
+      filter.$and = [
+        dateTo ? { startDate: { $lte: dateTo } } : {},
+        dateFrom ? { endDate: { $gte: dateFrom } } : {}
+      ].filter((condition) => Object.keys(condition).length > 0);
+    }
   }
 
   const { page, limit, skip } = parsePagination(req.query);
@@ -119,8 +146,28 @@ export const decideLeave = async (req, res) => {
     type: "leave_status_updated",
     entityType: "Leave",
     entityId: leave._id,
+    referenceId: leave._id,
+    redirectUrl: "/leaves",
     createdBy: req.user._id
   });
 
   res.status(StatusCodes.OK).json({ leave });
+};
+
+export const deleteLeave = async (req, res) => {
+  const leave = await Leave.findById(req.params.id).populate("user");
+  if (!leave) {
+    throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
+  }
+
+  if (req.user.role === ROLES.EMPLOYEE && String(leave.user._id) !== String(req.user._id)) {
+    throw new AppError("You can only delete your own leave request", StatusCodes.FORBIDDEN);
+  }
+
+  if (req.user.role === ROLES.TEAM_LEAD && String(leave.user.team || "") !== String(req.user.team || "")) {
+    throw new AppError("You can only delete leave requests for your own team", StatusCodes.FORBIDDEN);
+  }
+
+  await leave.deleteOne();
+  res.status(StatusCodes.OK).json({ message: "Leave deleted successfully" });
 };
