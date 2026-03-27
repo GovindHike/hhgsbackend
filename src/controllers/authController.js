@@ -2,7 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import { User } from "../models/User.js";
 import { signAccessToken, generateTemporaryPassword } from "../utils/token.js";
 import { AppError } from "../utils/AppError.js";
-import { firstTimePasswordTemplate } from "../utils/emailTemplates.js";
+import { forgotPasswordTemplate } from "../utils/emailTemplates.js";
 import { sendEmail } from "../services/emailService.js";
 
 const buildAuthResponse = (user) => {
@@ -52,7 +52,8 @@ export const changePassword = async (req, res) => {
 };
 
 export const resetPassword = async (req, res) => {
-  const user = await User.findOne({ email: req.body.email });
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const user = await User.findOne({ email });
   if (!user) {
     throw new AppError("User not found", StatusCodes.NOT_FOUND);
   }
@@ -62,12 +63,17 @@ export const resetPassword = async (req, res) => {
   user.isFirstLogin = true;
   await user.save();
 
-  const mail = firstTimePasswordTemplate({
+  const mail = forgotPasswordTemplate({
     name: user.name,
     email: user.email,
     password: temporaryPassword
   });
-  await sendEmail({ to: user.email, ...mail });
+
+  try {
+    await sendEmail({ to: user.email, ...mail });
+  } catch (error) {
+    throw new AppError(`Failed to send reset email: ${error.message}`, StatusCodes.INTERNAL_SERVER_ERROR);
+  }
 
   res.status(StatusCodes.OK).json({ message: "Password reset email sent" });
 };

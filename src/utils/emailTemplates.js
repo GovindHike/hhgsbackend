@@ -9,6 +9,17 @@ export const firstTimePasswordTemplate = ({ name, email, password }) => ({
   `
 });
 
+export const forgotPasswordTemplate = ({ name, email, password }) => ({
+  subject: "Password Reset Instructions",
+  html: `
+    <p>Hi ${name || "Team"},</p>
+    <p>We received a request to reset your password. Your temporary password is below:</p>
+    <p><strong>Email:</strong> ${email}</p>
+    <p><strong>Temporary Password:</strong> ${password}</p>
+    <p>Please log in and change your password immediately.</p>
+  `
+});
+
 export const broadcastTemplate = ({ subject, body }) => ({
   subject,
   html: `<p>${body.replace(/\n/g, "<br/>")}</p>`

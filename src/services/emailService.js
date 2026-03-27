@@ -8,9 +8,18 @@ const transporter = nodemailer.createTransport({
   auth: env.smtpUser && env.smtpPass ? { user: env.smtpUser, pass: env.smtpPass } : undefined
 });
 
+// Optionally verify transporter at startup for improved visibility
+transporter.verify().catch((error) => {
+  console.warn("Email service connection verification failed:", error.message);
+});
+
 export const sendEmail = async ({ to, cc, subject, html }) => {
   if (!env.smtpHost) {
-    return;
+    throw new Error("SMTP_HOST is not configured. Cannot send email.");
+  }
+
+  if (!env.mailFrom) {
+    throw new Error("MAIL_FROM is not configured. Cannot send email.");
   }
 
   await transporter.sendMail({
