@@ -16,15 +16,18 @@ const getLeadTeamMemberIds = async (user) => {
 const getScopedTaskFilter = async (req) => {
   const filter = {};
 
-  if (req.user.role === ROLES.EMPLOYEE) {
-    filter.assignedTo = req.user._id;
-  }
-
-  if (req.user.role === ROLES.TEAM_LEAD) {
-    if (req.query.scope === "own") {
+  // Allow explicit full-scope view for any role
+  if (req.query.scope !== "all") {
+    if (req.user.role === ROLES.EMPLOYEE) {
       filter.assignedTo = req.user._id;
-    } else {
-      filter.assignedTo = { $in: await getLeadTeamMemberIds(req.user) };
+    }
+
+    if (req.user.role === ROLES.TEAM_LEAD) {
+      if (req.query.scope === "own") {
+        filter.assignedTo = req.user._id;
+      } else {
+        filter.assignedTo = { $in: await getLeadTeamMemberIds(req.user) };
+      }
     }
   }
 
@@ -123,6 +126,7 @@ export const getTasks = async (req, res) => {
     Task.find(filter)
       .populate("assignedTo", "name email")
       .populate("assignedBy", "name email")
+      .populate("commands.sentBy", "name")
       .sort({ taskDate: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -173,6 +177,91 @@ export const updateTaskStatus = async (req, res) => {
   });
 
   res.status(StatusCodes.OK).json({ task });
+};
+
+export const commandTask = async (req, res) => {
+  const { message } = req.body;
+  if (!message || !message.trim()) {
+    throw new AppError("Command message is required", StatusCodes.BAD_REQUEST);
+  }
+
+  const task = await Task.findById(req.params.id).populate("assignedTo", "name email").populate("assignedBy", "name email");
+  if (!task) {
+    throw new AppError("Task not found", StatusCodes.NOT_FOUND);
+  }
+
+  if (req.user.role === ROLES.EMPLOYEE && String(task.assignedTo?._id) !== String(req.user._id)) {
+    throw new AppError("You can only command your own tasks", StatusCodes.FORBIDDEN);
+  }
+
+  if (req.user.role === ROLES.TEAM_LEAD) {
+    const memberIds = await getLeadTeamMemberIds(req.user);
+    if (!memberIds.includes(String(task.assignedTo?._id)) && String(task.assignedTo?._id) !== String(req.user._id)) {
+      throw new AppError("You can only command tasks within your team", StatusCodes.FORBIDDEN);
+    }
+  }
+
+  const recipientsSet = new Set();
+  if (task.assignedTo?._id) recipientsSet.add(String(task.assignedTo._id));
+  if (task.assignedBy?._id) recipientsSet.add(String(task.assignedBy._id));
+
+  // resolve @mentions for both exact names/emails and partial matches
+  const mentionTokens = [];
+  const mentionRegex = /@([^@\s][^@]*)/g;
+  let mentionMatch;
+  while ((mentionMatch = mentionRegex.exec(message)) !== null) {
+    const token = mentionMatch[1].trim().replace(/[.,;!?]+$/g, "");
+    if (token) mentionTokens.push(token);
+  }
+
+  if (mentionTokens.length) {
+    const uniqueTokens = [...new Set(mentionTokens)];
+
+    const queryOr = [];
+    uniqueTokens.forEach((token) => {
+      queryOr.push({ name: token });
+      queryOr.push({ email: token });
+    });
+
+    let mentionResolved = false;
+    if (queryOr.length) {
+      const mentionedUsers = await User.find({ $or: queryOr }).select("_id").lean();
+      mentionedUsers.forEach((u) => recipientsSet.add(String(u._id)));
+      mentionResolved = mentionedUsers.length > 0;
+    }
+
+    // fallback for names with spaces or non-standard characters
+    if (!mentionResolved && uniqueTokens.length) {
+      const allUsers = await User.find({}, "_id name email").lean();
+      allUsers.forEach((u) => {
+        if (message.includes(`@${u.name}`) || message.includes(`@${u.email}`)) {
+          recipientsSet.add(String(u._id));
+        }
+      });
+    }
+  }
+
+  const recipients = Array.from(recipientsSet).filter((id) => id !== String(req.user._id));
+  if (!recipients.length) {
+    recipients.push(String(req.user._id));
+  }
+
+  task.commands.push({ message, sentBy: req.user._id });
+  await task.save();
+
+  await createNotification({
+    recipients,
+    title: `Task command from ${req.user.name}`,
+    message: message,
+    type: "task_command",
+    entityType: "Task",
+    entityId: task._id,
+    referenceId: task._id,
+    redirectUrl: "/tasks",
+    createdBy: req.user._id
+  });
+
+  res.status(StatusCodes.OK).json({ message: "Command sent" });
 };
 
 export const deleteTask = async (req, res) => {

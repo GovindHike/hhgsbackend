@@ -10,7 +10,11 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: Object.values(ROLES), required: true, index: true },
     employeeCode: { type: String, unique: true, sparse: true },
     team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null, index: true },
-    leaveBalance: { type: Number, default: 12, min: 0 },
+    leaveBalance: {
+      planned: { type: Number, default: 12, min: 0 },
+      sick: { type: Number, default: 6, min: 0 }
+    },
+    leaveYearStart: { type: Date, default: null },
     isFirstLogin: { type: Boolean, default: true },
     isActive: { type: Boolean, default: true }
   },

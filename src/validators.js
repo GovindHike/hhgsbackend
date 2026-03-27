@@ -85,6 +85,9 @@ export const taskValidators = {
   }),
   updateStatus: Joi.object({
     status: Joi.string().valid(...TASK_STATUSES).required()
+  }),
+  command: Joi.object({
+    message: Joi.string().trim().required()
   })
 };
 
@@ -93,9 +96,13 @@ export const leaveValidators = {
     startDate: Joi.date().required(),
     endDate: Joi.date().min(Joi.ref("startDate")).required(),
     leaveType: Joi.string().valid("Full Day", "Half Day").required(),
-    reason: Joi.string().required()
+    requestedType: Joi.string().valid("PLANNED", "SICK").required(),
+    reason: Joi.string().required(),
+    doctorProof: Joi.string().allow(null, ""),
+    finalType: Joi.string().valid("PLANNED", "SICK").allow(null)
   }),
   decide: Joi.object({
-    status: Joi.string().valid(...LEAVE_STATUSES.filter((status) => status !== "Pending")).required()
+    action: Joi.string().valid("approve", "approve_sick", "convert_planned", "reject").required(),
+    finalType: Joi.string().valid("PLANNED", "SICK").allow(null)
   })
 };

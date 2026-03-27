@@ -79,6 +79,21 @@ export const updateUser = async (req, res) => {
   res.status(StatusCodes.OK).json({ user });
 };
 
+export const getMentionUsers = async (req, res) => {
+  const filter = {};
+
+  if (req.query.q) {
+    const query = req.query.q.trim();
+    filter.$or = [
+      { name: { $regex: query, $options: "i" } },
+      { email: { $regex: query, $options: "i" } }
+    ];
+  }
+
+  const users = await User.find(filter, "_id name email").sort({ name: 1 }).lean();
+  res.status(StatusCodes.OK).json({ users });
+};
+
 export const deleteUser = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) {

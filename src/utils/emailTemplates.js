@@ -18,10 +18,42 @@ export const dailyProjectStatusTemplate = ({ generatedAt, projectSummary, taskSu
   subject: "Daily Project Status Report",
   html: `
     <div style="font-family: Arial, sans-serif; color: #172033; line-height: 1.6;">
+      <p>Hi Team,</p>
+      <p>Please find today’s project status update below:</p>
       <h2 style="margin-bottom: 4px;">Daily Project Status Report</h2>
       <p style="color: #64748b; margin-top: 0;">Generated on ${new Date(generatedAt).toLocaleString()}</p>
 
-      <h3>1. Project Summary</h3>
+      <h3>1. Team Availability</h3>
+      ${leaveSummary.length > 0 ? `
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+          <thead>
+            <tr>
+              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Employee</th>
+              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Leave Type</th>
+              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Status</th>
+              <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Date Range</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${leaveSummary
+              .map(
+                (leave) => `
+                  <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.employeeName}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.leaveType}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.leaveStatus}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.leaveDuration}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      ` : `
+        <p>No team leave requests (pending/approved) for today.</p>
+      `}
+
+      <h3>2. Project Summary</h3>
       ${projectSummary
         .map(
           (project) => `
@@ -45,35 +77,6 @@ export const dailyProjectStatusTemplate = ({ generatedAt, projectSummary, taskSu
           `
         )
         .join("")}
-
-      <h3>2. Task Summary</h3>
-      <p>Total tasks: <strong>${taskSummary.total}</strong></p>
-      <p>Completed tasks: <strong>${taskSummary.completed}</strong></p>
-      <p>Pending tasks: <strong>${taskSummary.pending}</strong></p>
-
-      <h3>3. Leave Summary</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Employee</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Leave Type</th>
-            <th style="text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0;">Leave Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${leaveSummary
-            .map(
-              (leave) => `
-                <tr>
-                  <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.employeeName}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.leaveType}</td>
-                  <td style="padding: 8px; border-bottom: 1px solid #f1f5f9;">${leave.leaveStatus}</td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
     </div>
   `
 });

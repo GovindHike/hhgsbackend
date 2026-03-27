@@ -32,7 +32,7 @@ export const getTeams = async (req, res) => {
   const [teams, total] = await Promise.all([
     Team.find(filter)
       .populate("lead", "name email role")
-      .populate("members", "name email role employeeCode")
+      .populate("members", "name email role employeeCode leaveBalance")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)

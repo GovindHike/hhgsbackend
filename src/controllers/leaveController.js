@@ -5,6 +5,16 @@ import { ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
+import { currentLeaveYearStart, leaveYearLabel } from "../jobs/leaveResetJob.js";
+
+function getBalanceField(type) {
+  return type === "SICK" ? "sick" : "planned";
+}
+
+function getAvailableBalance(leaveBalance, type) {
+  if (!leaveBalance || typeof leaveBalance !== "object") return 0;
+  return leaveBalance[getBalanceField(type)] ?? 0;
+}
 
 export const createLeave = async (req, res) => {
   const requester = await User.findById(req.user._id).select("leaveBalance name role team");
@@ -16,14 +26,26 @@ export const createLeave = async (req, res) => {
           Math.ceil((new Date(req.body.endDate) - new Date(req.body.startDate)) / (1000 * 60 * 60 * 24)) + 1
         );
 
-  if (typeof requester.leaveBalance === "number" && leaveUnits > requester.leaveBalance) {
-    throw new AppError("Insufficient leave balance", StatusCodes.BAD_REQUEST);
+  const balanceField = getBalanceField(req.body.requestedType);
+  const availableBalance = getAvailableBalance(requester.leaveBalance, req.body.requestedType);
+
+  if (leaveUnits > availableBalance) {
+    throw new AppError(
+      `Insufficient ${req.body.requestedType === "SICK" ? "sick" : "planned"} leave balance (available: ${availableBalance} day${availableBalance !== 1 ? "s" : ""})`,
+      StatusCodes.BAD_REQUEST
+    );
   }
 
+  // All leaves start as Pending — Team Lead / Admin must approve
   const leave = await Leave.create({
     ...req.body,
     user: req.user._id,
-    team: req.user.team || null
+    team: req.user.team || null,
+    finalType: null,
+    validationStatus: "PENDING",
+    status: "Pending",
+    isDeducted: false,
+    adminOverride: false
   });
 
   if (req.user.role === ROLES.EMPLOYEE) {
@@ -88,6 +110,10 @@ export const getLeaves = async (req, res) => {
     filter.status = req.query.status;
   }
 
+  if (req.query.requestedType) {
+    filter.requestedType = req.query.requestedType;
+  }
+
   if (req.query.dateFrom || req.query.dateTo) {
     const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom) : null;
     const dateTo = req.query.dateTo ? new Date(req.query.dateTo) : null;
@@ -103,7 +129,7 @@ export const getLeaves = async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const [leaves, total] = await Promise.all([
     Leave.find(filter)
-      .populate("user", "name email role")
+      .populate("user", "name email role leaveBalance")
       .populate("team", "name")
       .populate("approvedBy", "name email")
       .sort({ createdAt: -1 })
@@ -116,6 +142,58 @@ export const getLeaves = async (req, res) => {
   res.status(StatusCodes.OK).json({ leaves, ...buildPaginatedResponse({ items: leaves, total, page, limit }) });
 };
 
+export const getLeaveBalance = async (req, res) => {
+  const user = await User.findById(req.user._id).select("leaveBalance leaveYearStart name");
+  const yearStart = user.leaveYearStart || currentLeaveYearStart();
+  const yearEnd = new Date(yearStart);
+  yearEnd.setFullYear(yearEnd.getFullYear() + 1);
+
+  // Calculate used leaves for current FY (approved leaves only)
+  const approvedLeaves = await Leave.find({
+    user: req.user._id,
+    status: "Approved",
+    validationStatus: "APPROVED",
+    startDate: { $gte: yearStart, $lt: yearEnd }
+  }).lean();
+
+  let plannedUsed = 0;
+  let sickUsed = 0;
+
+  for (const leave of approvedLeaves) {
+    const leaveUnits =
+      leave.leaveType === "Half Day"
+        ? 0.5
+        : Math.max(
+            1,
+            Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1
+          );
+
+    if (leave.finalType === "PLANNED") {
+      plannedUsed += leaveUnits;
+    } else if (leave.finalType === "SICK") {
+      sickUsed += leaveUnits;
+    }
+  }
+
+  const totalPlanned = 12;
+  const totalSick = 6;
+
+  const balance = {
+    planned: user.leaveBalance?.planned ?? totalPlanned,
+    sick: user.leaveBalance?.sick ?? totalSick,
+    plannedUsed,
+    sickUsed,
+    plannedTotal: totalPlanned,
+    sickTotal: totalSick
+  };
+
+  res.status(StatusCodes.OK).json({
+    balance,
+    leaveYear: leaveYearLabel(yearStart),
+    yearStart: yearStart
+  });
+};
+
 export const decideLeave = async (req, res) => {
   const leave = await Leave.findById(req.params.id).populate("user");
   if (!leave) {
@@ -126,23 +204,105 @@ export const decideLeave = async (req, res) => {
     throw new AppError("You can only manage leave for your own team", StatusCodes.FORBIDDEN);
   }
 
-  leave.status = req.body.status;
+  const { action } = req.body;
+
+  if (!["approve", "approve_sick", "convert_planned", "reject"].includes(action)) {
+    throw new AppError("Invalid decision action", StatusCodes.BAD_REQUEST);
+  }
+
+  if (action === "reject") {
+    leave.validationStatus = "REJECTED";
+    leave.finalType = null;
+    leave.status = "Rejected";
+    leave.adminOverride = true;
+  } else if (action === "approve") {
+    // Generic approve — honours whatever the employee requested
+    leave.validationStatus = "APPROVED";
+    leave.finalType = leave.requestedType;
+    leave.status = "Approved";
+    leave.adminOverride = true;
+  } else if (action === "approve_sick") {
+    leave.validationStatus = "APPROVED";
+    leave.finalType = "SICK";
+    leave.status = "Approved";
+    leave.adminOverride = true;
+  } else if (action === "convert_planned") {
+    leave.validationStatus = "APPROVED";
+    leave.finalType = "PLANNED";
+    leave.status = "Approved";
+    leave.adminOverride = true;
+  }
+
   leave.approvedBy = req.user._id;
   leave.decisionAt = new Date();
-  await leave.save();
 
-  if (leave.status === "Approved") {
+  // Only deduct from balance if leave is approved and not rejected/cancelled
+  if (!leave.isDeducted && leave.validationStatus === "APPROVED" && leave.status === "Approved" && leave.finalType) {
     const leaveUnits =
       leave.leaveType === "Half Day"
         ? 0.5
         : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
-    await User.findByIdAndUpdate(leave.user._id, { $inc: { leaveBalance: -leaveUnits } });
+    const balanceField = getBalanceField(leave.finalType);
+    await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${balanceField}`]: -leaveUnits } });
+    leave.isDeducted = true;
   }
+
+  await leave.save();
 
   await createNotification({
     recipients: [leave.user._id],
     title: leave.status === "Approved" ? "Leave Approved" : "Leave Rejected",
     message: `${req.user.name} ${leave.status === "Approved" ? "approved" : "rejected"} your leave request.`,
+    type: "leave_status_updated",
+    entityType: "Leave",
+    entityId: leave._id,
+    referenceId: leave._id,
+    redirectUrl: "/leaves",
+    createdBy: req.user._id
+  });
+
+  res.status(StatusCodes.OK).json({ leave });
+};
+
+export const cancelLeave = async (req, res) => {
+  const leave = await Leave.findById(req.params.id).populate("user");
+  if (!leave) {
+    throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
+  }
+
+  if (req.user.role === ROLES.EMPLOYEE || req.user.role === ROLES.TEAM_LEAD) {
+    if (String(leave.user._id) !== String(req.user._id)) {
+      throw new AppError("You can only cancel your own leave request", StatusCodes.FORBIDDEN);
+    }
+  } else {
+    throw new AppError("Only employees or team leads can cancel their own leave requests", StatusCodes.FORBIDDEN);
+  }
+
+  if (leave.status === "Cancelled") {
+    throw new AppError("Leave request is already cancelled", StatusCodes.BAD_REQUEST);
+  }
+
+  if (leave.status === "Approved" && leave.isDeducted && leave.finalType) {
+    const leaveUnits =
+      leave.leaveType === "Half Day"
+        ? 0.5
+        : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+    const balanceField = getBalanceField(leave.finalType);
+    await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${balanceField}`]: leaveUnits } });
+    leave.isDeducted = false;
+  }
+
+  leave.status = "Cancelled";
+  leave.validationStatus = "CANCELLED";
+  leave.approvedBy = req.user._id;
+  leave.decisionAt = new Date();
+
+  await leave.save();
+
+  await createNotification({
+    recipients: [leave.user._id],
+    title: "Leave Cancelled",
+    message: `Your leave request has been cancelled.`,
     type: "leave_status_updated",
     entityType: "Leave",
     entityId: leave._id,

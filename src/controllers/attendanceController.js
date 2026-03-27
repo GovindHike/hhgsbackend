@@ -52,8 +52,16 @@ export const checkOut = async (req, res) => {
     return res.status(StatusCodes.BAD_REQUEST).json({ message: "No active check-in session found" });
   }
 
+  const reason = req.body.reason && ["Lunch", "Permission", "Regular", "Other"].includes(req.body.reason) ? req.body.reason : "Regular";
   lastSession.checkOut = new Date();
-  attendance.totalHours = computeAttendanceSummary(attendance.sessions).totalHours;
+  lastSession.reason = reason;
+  lastSession.lunchMinutes = reason === "Lunch" ? 60 : 0;
+  lastSession.permissionMinutes = reason === "Permission" ? 60 : 0;
+
+  const summary = computeAttendanceSummary(attendance.sessions);
+  attendance.totalHours = summary.totalHours;
+  attendance.totalLunchMinutes = summary.totalLunchMinutes;
+  attendance.totalPermissionMinutes = summary.totalPermissionMinutes;
   await attendance.save();
 
   await createNotification({

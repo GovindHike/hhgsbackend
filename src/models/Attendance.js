@@ -3,7 +3,10 @@ import mongoose from "mongoose";
 const attendanceSessionSchema = new mongoose.Schema(
   {
     checkIn: { type: Date, required: true },
-    checkOut: { type: Date, default: null }
+    checkOut: { type: Date, default: null },
+    reason: { type: String, enum: ["Lunch", "Permission", "Regular", "Other"], default: "Regular" },
+    lunchMinutes: { type: Number, default: 0 },
+    permissionMinutes: { type: Number, default: 0 }
   },
   { _id: false }
 );

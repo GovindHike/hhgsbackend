@@ -49,7 +49,11 @@ export const getDailyProjectStatusReportPayload = async () => {
         populate: { path: "team", select: "name" }
       })
       .lean(),
-    Leave.find({ status: { $in: ["Approved", "Pending"] }, endDate: { $gte: dayjs().startOf("day").toDate() } })
+    Leave.find({
+      status: { $in: ["Approved", "Pending"] },
+      startDate: { $lte: todayEnd },
+      endDate: { $gte: todayStart }
+    })
       .populate("user", "name")
       .lean(),
     User.find({ role: "Employee", isActive: true }).select("email").lean(),
@@ -65,7 +69,8 @@ export const getDailyProjectStatusReportPayload = async () => {
   };
   const leaveSummary = leaves.map((leave) => ({
     employeeName: leave.user?.name || "Unknown",
-    leaveType: leave.leaveType,
+    leaveType: leave.requestedType || leave.finalType || "N/A",
+    leaveDuration: `${dayjs(leave.startDate).format("YYYY-MM-DD")} to ${dayjs(leave.endDate).format("YYYY-MM-DD")}`,
     leaveStatus: leave.status
   }));
 

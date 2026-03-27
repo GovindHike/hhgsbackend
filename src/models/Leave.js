@@ -8,10 +8,16 @@ const leaveSchema = new mongoose.Schema(
     startDate: { type: Date, required: true, index: true },
     endDate: { type: Date, required: true, index: true },
     leaveType: { type: String, enum: ["Full Day", "Half Day"], required: true, default: "Full Day" },
+    requestedType: { type: String, enum: ["PLANNED", "SICK"], required: true },
+    finalType: { type: String, enum: ["PLANNED", "SICK", null], default: null },
+    validationStatus: { type: String, enum: ["PENDING", "APPROVED", "REJECTED"], default: "PENDING", index: true },
+    doctorProof: { type: String, default: null },
+    adminOverride: { type: Boolean, default: false },
     reason: { type: String, required: true, trim: true },
     status: { type: String, enum: LEAVE_STATUSES, default: "Pending", index: true },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    decisionAt: { type: Date, default: null }
+    decisionAt: { type: Date, default: null },
+    isDeducted: { type: Boolean, default: false }
   },
   { timestamps: true }
 );
