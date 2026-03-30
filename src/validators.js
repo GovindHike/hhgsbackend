@@ -52,17 +52,57 @@ export const teamValidators = {
 
 export const assetValidators = {
   create: Joi.object({
-    name: Joi.string().required(),
-    type: Joi.string().required(),
+    name: Joi.string().allow("", null),
+    type: Joi.string().allow("", null),
+    category: Joi.string().allow("", null),
+    description: Joi.string().allow("", null),
+    uniqueAssetId: Joi.string().required(),
+    complaints: Joi.array().items(
+      Joi.object({
+        details: Joi.string().required(),
+        date: Joi.date().required(),
+        receiptName: Joi.string().allow("", null),
+        receiptData: Joi.string().allow("", null)
+      })
+    ),
+    purchaseDate: Joi.date().allow(null),
+    vendor: Joi.string().allow("", null),
+    cost: Joi.number().precision(2).min(0).default(0),
+    location: Joi.string().valid("Regional office", "new office").default("Regional office"),
+    serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
     status: Joi.string().valid(...ASSET_STATUSES).default("Available"),
+    complaint: Joi.string().allow("", null),
+    complaintDate: Joi.date().allow(null),
+    recoverDate: Joi.date().allow(null),
+    remarks: Joi.string().allow("", null),
     note: Joi.string().allow("", null)
   }),
   update: Joi.object({
     name: Joi.string(),
     type: Joi.string(),
+    category: Joi.string().allow("", null),
+    description: Joi.string().allow("", null),
+    uniqueAssetId: Joi.string(),
+    complaints: Joi.array().items(
+      Joi.object({
+        details: Joi.string().required(),
+        date: Joi.date().required(),
+        receiptName: Joi.string().allow("", null),
+        receiptData: Joi.string().allow("", null)
+      })
+    ),
+    purchaseDate: Joi.date().allow(null),
+    vendor: Joi.string().allow("", null),
+    cost: Joi.number().precision(2).min(0),
+    location: Joi.string().valid("Regional office", "new office"),
+    serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
     status: Joi.string().valid(...ASSET_STATUSES),
+    complaint: Joi.string().allow("", null),
+    complaintDate: Joi.date().allow(null),
+    recoverDate: Joi.date().allow(null),
+    remarks: Joi.string().allow("", null),
     note: Joi.string().allow("", null)
   }).min(1),
   movement: Joi.object({
@@ -70,6 +110,12 @@ export const assetValidators = {
     date: Joi.date().required(),
     reason: Joi.string().required(),
     note: Joi.string().allow("", null)
+  }),
+  complaint: Joi.object({
+    details: Joi.string().required(),
+    date: Joi.date().required(),
+    receiptName: Joi.string().allow("", null),
+    receiptData: Joi.string().allow("", null)
   })
 };
 

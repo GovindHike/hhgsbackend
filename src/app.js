@@ -4,6 +4,8 @@ import helmet from "helmet";
 import compression from "compression";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
+import fs from "fs";
+import path from "path";
 import "express-async-errors";
 import routes from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorMiddleware.js";
@@ -47,6 +49,15 @@ export const createApp = () => {
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
+
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  const announcementsDir = path.join(uploadsDir, "announcements");
+
+  if (!fs.existsSync(announcementsDir)) {
+    fs.mkdirSync(announcementsDir, { recursive: true });
+  }
+
+  app.use("/uploads", express.static(uploadsDir));
 
   app.use("/api", routes);
   app.use(notFoundHandler);

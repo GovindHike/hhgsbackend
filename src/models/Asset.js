@@ -29,9 +29,28 @@ const assetSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     type: { type: String, required: true, trim: true, index: true },
+    description: { type: String, trim: true, default: "" },
+    category: { type: String, trim: true, default: "" },
     uniqueAssetId: { type: String, required: true, unique: true, index: true },
+    purchaseDate: { type: Date, default: null },
+    vendor: { type: String, trim: true, default: "" },
+    cost: { type: Number, default: 0 },
+    location: { type: String, trim: true, enum: ["Regional office", "new office"], default: "Regional office" },
+    serialNumber: { type: String, trim: true, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
     status: { type: String, enum: ASSET_STATUSES, default: "Available" },
+    complaint: { type: String, trim: true, default: "" },
+    complaintDate: { type: Date, default: null },
+    recoverDate: { type: Date, default: null },
+    complaints: [
+      {
+        details: { type: String, trim: true },
+        date: { type: Date },
+        receiptName: { type: String, trim: true, default: "" },
+        receiptData: { type: String, default: "" }
+      }
+    ],
+    remarks: { type: String, trim: true, default: "" },
     history: [assetHistorySchema],
     movements: [assetMovementSchema]
   },

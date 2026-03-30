@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createAsset, deleteAsset, getAssets, recordAssetMovement, updateAsset } from "../controllers/assetController.js";
+import { createAsset, deleteAsset, getAssets, recordAssetMovement, recordAssetComplaint, updateAsset } from "../controllers/assetController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { assetValidators } from "../validators.js";
@@ -17,6 +17,13 @@ router.post(
   authorize(ROLES.ADMIN, ROLES.EMPLOYEE),
   validate(assetValidators.movement),
   recordAssetMovement
+);
+
+router.post(
+  "/:id/complaints",
+  authorize(ROLES.ADMIN),
+  validate(assetValidators.complaint),
+  recordAssetComplaint
 );
 
 export default router;
