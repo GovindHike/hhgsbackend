@@ -2,6 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import { Announcement, ANNOUNCEMENT_REACTION_TYPES } from "../models/Announcement.js";
 import { createNotification } from "../services/notificationService.js";
 import { User } from "../models/User.js";
+import { isAdminRole } from "../utils/constants.js";
 
 export const createAnnouncement = async (req, res) => {
   const { content, title, media = [] } = req.body;
@@ -99,10 +100,10 @@ export const deleteAnnouncement = async (req, res) => {
     return res.status(StatusCodes.NOT_FOUND).json({ message: "Announcement not found" });
   }
 
-  const isAdmin = req.user.role === "Admin";
+  const hasAdminRight = isAdminRole(req.user.role);
   const isOwner = String(announcement.createdBy) === String(req.user._id);
 
-  if (!isAdmin && !isOwner) {
+  if (!hasAdminRight && !isOwner) {
     return res.status(StatusCodes.FORBIDDEN).json({ message: "Not authorized to delete this announcement" });
   }
 

@@ -3,7 +3,7 @@ import Joi from "joi";
 import { getTheme, updateTheme } from "../controllers/settingController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
-import { ROLES } from "../utils/constants.js";
+import { ADMIN_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.get("/theme", getTheme);
 router.post(
   "/theme",
   protect,
-  authorize(ROLES.ADMIN),
+  authorize(...ADMIN_ROLES),
   validate(
     Joi.object({
       primaryColor: Joi.string()

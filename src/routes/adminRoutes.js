@@ -3,11 +3,11 @@ import Joi from "joi";
 import { previewDailyStatusReport, sendBroadcastEmail, sendDailyStatusReport } from "../controllers/adminController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
-import { ROLES } from "../utils/constants.js";
+import { ADMIN_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
-router.use(protect, authorize(ROLES.ADMIN));
+router.use(protect, authorize(...ADMIN_ROLES));
 router.post(
   "/broadcast-email",
   validate(

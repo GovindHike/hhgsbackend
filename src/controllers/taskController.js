@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import { Task } from "../models/Task.js";
 import { Team } from "../models/Team.js";
 import { User } from "../models/User.js";
-import { ROLES } from "../utils/constants.js";
+import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
@@ -18,11 +18,11 @@ const getScopedTaskFilter = async (req) => {
 
   // Allow explicit full-scope view for any role
   if (req.query.scope !== "all") {
-    if (req.user.role === ROLES.EMPLOYEE) {
+    if (EMPLOYEE_ROLES.includes(req.user.role)) {
       filter.assignedTo = req.user._id;
     }
 
-    if (req.user.role === ROLES.TEAM_LEAD) {
+    if (TEAM_LEAD_ROLES.includes(req.user.role)) {
       if (req.query.scope === "own") {
         filter.assignedTo = req.user._id;
       } else {
@@ -37,11 +37,11 @@ const getScopedTaskFilter = async (req) => {
 
   const employeeId = req.query.employeeId || req.query.assignedTo;
   if (employeeId) {
-    if (req.user.role === ROLES.EMPLOYEE && String(employeeId) !== String(req.user._id)) {
+    if (EMPLOYEE_ROLES.includes(req.user.role) && String(employeeId) !== String(req.user._id)) {
       throw new AppError("You can only filter your own tasks", StatusCodes.FORBIDDEN);
     }
 
-    if (req.user.role === ROLES.TEAM_LEAD) {
+    if (TEAM_LEAD_ROLES.includes(req.user.role)) {
       const memberIds = await getLeadTeamMemberIds(req.user);
       if (!memberIds.includes(String(employeeId))) {
         throw new AppError("You can only filter tasks within your team", StatusCodes.FORBIDDEN);
@@ -81,14 +81,14 @@ const getScopedTaskFilter = async (req) => {
 };
 
 export const createTask = async (req, res) => {
-  if (req.user.role === ROLES.TEAM_LEAD) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const memberIds = await getLeadTeamMemberIds(req.user);
     if (!memberIds.includes(String(req.body.assignedTo))) {
       throw new AppError("Team lead can only assign tasks within their team", StatusCodes.FORBIDDEN);
     }
   }
 
-  if (req.user.role === ROLES.EMPLOYEE) {
+  if (EMPLOYEE_ROLES.includes(req.user.role)) {
     req.body.assignedTo = req.user._id;
     req.body.isDailyTask = true;
   }
@@ -143,11 +143,11 @@ export const updateTaskStatus = async (req, res) => {
     throw new AppError("Task not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.EMPLOYEE && String(task.assignedTo) !== String(req.user._id)) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) && String(task.assignedTo) !== String(req.user._id)) {
     throw new AppError("You can only update your own tasks", StatusCodes.FORBIDDEN);
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const memberIds = await getLeadTeamMemberIds(req.user);
     if (!memberIds.includes(String(task.assignedTo))) {
       throw new AppError("You can only manage tasks within your team", StatusCodes.FORBIDDEN);
@@ -190,11 +190,11 @@ export const commandTask = async (req, res) => {
     throw new AppError("Task not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.EMPLOYEE && String(task.assignedTo?._id) !== String(req.user._id)) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) && String(task.assignedTo?._id) !== String(req.user._id)) {
     throw new AppError("You can only command your own tasks", StatusCodes.FORBIDDEN);
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const memberIds = await getLeadTeamMemberIds(req.user);
     if (!memberIds.includes(String(task.assignedTo?._id)) && String(task.assignedTo?._id) !== String(req.user._id)) {
       throw new AppError("You can only command tasks within your team", StatusCodes.FORBIDDEN);
@@ -270,11 +270,11 @@ export const deleteTask = async (req, res) => {
     throw new AppError("Task not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.EMPLOYEE && String(task.assignedTo) !== String(req.user._id)) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) && String(task.assignedTo) !== String(req.user._id)) {
     throw new AppError("You can only delete your own tasks", StatusCodes.FORBIDDEN);
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const memberIds = await getLeadTeamMemberIds(req.user);
     if (!memberIds.includes(String(task.assignedTo))) {
       throw new AppError("You can only delete tasks within your team", StatusCodes.FORBIDDEN);

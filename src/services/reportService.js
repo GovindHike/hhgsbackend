@@ -4,6 +4,7 @@ import { Task } from "../models/Task.js";
 import { Leave } from "../models/Leave.js";
 import { sendEmail } from "./emailService.js";
 import { dailyProjectStatusTemplate } from "../utils/emailTemplates.js";
+import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 
 const buildProjectSummary = (tasks) => {
   const grouped = new Map();
@@ -56,9 +57,9 @@ export const getDailyProjectStatusReportPayload = async () => {
     })
       .populate("user", "name")
       .lean(),
-    User.find({ role: "Employee", isActive: true }).select("email").lean(),
-    User.find({ role: "Team Lead", isActive: true }).select("email").lean(),
-    User.find({ role: "Admin", isActive: true }).select("email").lean()
+    User.find({ role: { $in: EMPLOYEE_ROLES }, isActive: true }).select("email").lean(),
+    User.find({ role: { $in: TEAM_LEAD_ROLES }, isActive: true }).select("email").lean(),
+    User.find({ role: { $in: ADMIN_ROLES }, isActive: true }).select("email").lean()
   ]);
 
   const projectSummary = buildProjectSummary(tasks);

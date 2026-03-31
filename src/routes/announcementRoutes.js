@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import multer from "multer";
 import path from "path";
 import { protect, authorize } from "../middleware/authMiddleware.js";
+import { ADMIN_ROLES } from "../utils/constants.js";
 import { createAnnouncement, getAnnouncements, addReaction, addReply, deleteAnnouncement } from "../controllers/announcementController.js";
 
 const router = Router();
@@ -37,9 +38,9 @@ const upload = multer({
 });
 
 router.get("/", protect, getAnnouncements);
-router.post("/", protect, authorize("Admin"), createAnnouncement);
-router.delete("/:id", protect, authorize("Admin"), deleteAnnouncement);
-router.post("/upload", protect, authorize("Admin"), upload.single("file"), (req, res) => {
+router.post("/", protect, authorize(...ADMIN_ROLES), createAnnouncement);
+router.delete("/:id", protect, authorize(...ADMIN_ROLES), deleteAnnouncement);
+router.post("/upload", protect, authorize(...ADMIN_ROLES), upload.single("file"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: "File upload failed" });
   }

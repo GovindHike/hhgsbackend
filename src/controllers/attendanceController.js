@@ -2,7 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import dayjs from "dayjs";
 import { Attendance } from "../models/Attendance.js";
 import { computeAttendanceSummary } from "../utils/attendance.js";
-import { ROLES } from "../utils/constants.js";
+import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { User } from "../models/User.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
@@ -94,9 +94,9 @@ export const notifyAutoCheckout = async (userId, attendanceId) => {
 
 export const getAttendance = async (req, res) => {
   const filter = {};
-  if (req.user.role === ROLES.EMPLOYEE) {
+  if (EMPLOYEE_ROLES.includes(req.user.role)) {
     filter.user = req.user._id;
-  } else if (req.user.role === ROLES.TEAM_LEAD) {
+  } else if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const teamMembers = await User.find({ team: req.user.team }).select("_id").lean();
     filter.user = { $in: teamMembers.map((member) => member._id).concat(req.user._id) };
   } else if (req.query.employee) {
@@ -105,7 +105,7 @@ export const getAttendance = async (req, res) => {
   if (req.query.date) {
     filter.date = req.query.date;
   }
-  if (req.query.team && req.user.role !== ROLES.EMPLOYEE) {
+  if (req.query.team && !EMPLOYEE_ROLES.includes(req.user.role)) {
     const teamUsers = await User.find({ team: req.query.team }).select("_id").lean();
     filter.user = { $in: teamUsers.map((member) => member._id) };
   }

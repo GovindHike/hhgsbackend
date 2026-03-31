@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import { Leave } from "../models/Leave.js";
 import { User } from "../models/User.js";
-import { ROLES } from "../utils/constants.js";
+import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
@@ -48,10 +48,10 @@ export const createLeave = async (req, res) => {
     adminOverride: false
   });
 
-  if (req.user.role === ROLES.EMPLOYEE) {
+  if (EMPLOYEE_ROLES.includes(req.user.role)) {
     const [teamLeads, admins] = await Promise.all([
-      User.find({ role: ROLES.TEAM_LEAD, team: req.user.team }).select("_id").lean(),
-      User.find({ role: ROLES.ADMIN }).select("_id").lean()
+      User.find({ role: { $in: TEAM_LEAD_ROLES }, team: req.user.team }).select("_id").lean(),
+      User.find({ role: { $in: ADMIN_ROLES } }).select("_id").lean()
     ]);
 
     await createNotification({
@@ -67,8 +67,8 @@ export const createLeave = async (req, res) => {
     });
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD) {
-    const admins = await User.find({ role: ROLES.ADMIN }).select("_id").lean();
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
+    const admins = await User.find({ role: { $in: ADMIN_ROLES } }).select("_id").lean();
     await createNotification({
       recipients: admins.map((user) => user._id),
       title: "Team Lead leave request",
@@ -89,9 +89,9 @@ export const getLeaves = async (req, res) => {
   const filter = {};
   const scope = req.query.scope;
 
-  if (req.user.role === ROLES.EMPLOYEE) {
+  if (EMPLOYEE_ROLES.includes(req.user.role)) {
     filter.user = req.user._id;
-  } else if (req.user.role === ROLES.TEAM_LEAD) {
+  } else if (TEAM_LEAD_ROLES.includes(req.user.role)) {
     const teamMembers = await User.find({ team: req.user.team }).select("_id");
     const memberIds = teamMembers.map((member) => member._id);
 
@@ -200,7 +200,7 @@ export const decideLeave = async (req, res) => {
     throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD && String(leave.user.team || "") !== String(req.user.team || "")) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role) && String(leave.user.team || "") !== String(req.user.team || "")) {
     throw new AppError("You can only manage leave for your own team", StatusCodes.FORBIDDEN);
   }
 
@@ -270,7 +270,7 @@ export const cancelLeave = async (req, res) => {
     throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.EMPLOYEE || req.user.role === ROLES.TEAM_LEAD) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) || TEAM_LEAD_ROLES.includes(req.user.role)) {
     if (String(leave.user._id) !== String(req.user._id)) {
       throw new AppError("You can only cancel your own leave request", StatusCodes.FORBIDDEN);
     }
@@ -320,11 +320,11 @@ export const deleteLeave = async (req, res) => {
     throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
   }
 
-  if (req.user.role === ROLES.EMPLOYEE && String(leave.user._id) !== String(req.user._id)) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) && String(leave.user._id) !== String(req.user._id)) {
     throw new AppError("You can only delete your own leave request", StatusCodes.FORBIDDEN);
   }
 
-  if (req.user.role === ROLES.TEAM_LEAD && String(leave.user.team || "") !== String(req.user.team || "")) {
+  if (TEAM_LEAD_ROLES.includes(req.user.role) && String(leave.user.team || "") !== String(req.user.team || "")) {
     throw new AppError("You can only delete leave requests for your own team", StatusCodes.FORBIDDEN);
   }
 

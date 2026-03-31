@@ -22,7 +22,7 @@ const run = async () => {
     name: "System Admin",
     email: "admin@office.local",
     password: "Admin@123",
-    role: ROLES.ADMIN,
+    role: ROLES.MANAGING_DIRECTOR,
     employeeCode: "EMP-001",
     isFirstLogin: false
   });
@@ -31,8 +31,53 @@ const run = async () => {
     name: "Priya Sharma",
     email: "lead@office.local",
     password: "Lead@123",
-    role: ROLES.TEAM_LEAD,
+    role: ROLES.TECHNICAL_LEAD,
     employeeCode: "EMP-002",
+    isFirstLogin: false
+  });
+
+  const director = await User.create({
+    name: "Director User",
+    email: "director@office.local",
+    password: "Director@123",
+    role: ROLES.DIRECTOR,
+    employeeCode: "EMP-004",
+    isFirstLogin: false
+  });
+
+  const managingDirector = await User.create({
+    name: "Managing Director",
+    email: "managingdirector@office.local",
+    password: "MD@123",
+    role: ROLES.MANAGING_DIRECTOR,
+    employeeCode: "EMP-005",
+    isFirstLogin: false
+  });
+
+  const hrAdmin = await User.create({
+    name: "HR Administrator",
+    email: "hradmin@office.local",
+    password: "HR@123",
+    role: ROLES.HR_ADMIN,
+    employeeCode: "EMP-006",
+    isFirstLogin: false
+  });
+
+  const financeAdmin = await User.create({
+    name: "Finance Admin",
+    email: "financeadmin@office.local",
+    password: "Finance@123",
+    role: ROLES.FINANCE_ADMIN,
+    employeeCode: "EMP-007",
+    isFirstLogin: false
+  });
+
+  const clientDo = await User.create({
+    name: "Director of Operations",
+    email: "do@office.local",
+    password: "DO@123",
+    role: ROLES.DO,
+    employeeCode: "EMP-008",
     isFirstLogin: false
   });
 
@@ -40,7 +85,7 @@ const run = async () => {
     name: "Rahul Singh",
     email: "employee@office.local",
     password: "Employee@123",
-    role: ROLES.EMPLOYEE,
+    role: ROLES.SOFTWARE_ENGINEER,
     employeeCode: "EMP-003",
     isFirstLogin: false
   });

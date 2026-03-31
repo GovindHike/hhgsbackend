@@ -2,6 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import { Asset } from "../models/Asset.js";
 import { buildAssetNumber } from "../utils/asset.js";
 import { AppError } from "../utils/AppError.js";
+import { isAdminRole } from "../utils/constants.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 
 const buildHistoryEntry = (assignedTo, assignedBy, note) => ({
@@ -52,7 +53,7 @@ export const createAsset = async (req, res) => {
 
 export const getAssets = async (req, res) => {
   const filter = {};
-  if (req.user.role !== "Admin") {
+  if (!isAdminRole(req.user.role)) {
     filter.assignedTo = req.user._id;
   }
   if (req.query.status) filter.status = req.query.status;
@@ -143,7 +144,7 @@ export const recordAssetMovement = async (req, res) => {
     throw new AppError("Only assigned assets can have in/out entries", StatusCodes.BAD_REQUEST);
   }
 
-  if (req.user.role !== "Admin" && String(asset.assignedTo) !== String(req.user._id)) {
+  if (!isAdminRole(req.user.role) && String(asset.assignedTo) !== String(req.user._id)) {
     throw new AppError("You can only record movement for your assigned assets", StatusCodes.FORBIDDEN);
   }
 

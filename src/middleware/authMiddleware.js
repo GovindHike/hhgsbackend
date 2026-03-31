@@ -1,6 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import { User } from "../models/User.js";
 import { verifyAccessToken } from "../utils/token.js";
+import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 
 export const protect = async (req, _res, next) => {
@@ -23,8 +24,18 @@ export const protect = async (req, _res, next) => {
   next();
 };
 
+const normalizeRoleGroup = (role) => {
+  if (ADMIN_ROLES.includes(role)) return "Admin";
+  if (TEAM_LEAD_ROLES.includes(role)) return "Team Lead";
+  if (EMPLOYEE_ROLES.includes(role)) return "Employee";
+  return role;
+};
+
 export const authorize = (...roles) => (req, _res, next) => {
-  if (!roles.includes(req.user.role)) {
+  const userRole = req.user.role;
+  const allowed = roles.includes(userRole);
+
+  if (!allowed) {
     return next(new AppError("You are not authorized to access this resource", StatusCodes.FORBIDDEN));
   }
 

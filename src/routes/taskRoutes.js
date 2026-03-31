@@ -3,15 +3,15 @@ import { createTask, commandTask, deleteTask, getTasks, updateTaskStatus } from 
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { taskValidators } from "../validators.js";
-import { ROLES } from "../utils/constants.js";
+import { ALL_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
 router.use(protect);
 router.get("/", getTasks);
-router.post("/", authorize(ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.EMPLOYEE), validate(taskValidators.create), createTask);
+router.post("/", authorize(...ALL_ROLES), validate(taskValidators.create), createTask);
 router.patch("/:id/status", validate(taskValidators.updateStatus), updateTaskStatus);
-router.post("/:id/command", authorize(ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.EMPLOYEE), validate(taskValidators.command), commandTask);
-router.delete("/:id", authorize(ROLES.ADMIN, ROLES.TEAM_LEAD, ROLES.EMPLOYEE), deleteTask);
+router.post("/:id/command", authorize(...ALL_ROLES), validate(taskValidators.command), commandTask);
+router.delete("/:id", authorize(...ALL_ROLES), deleteTask);
 
 export default router;
