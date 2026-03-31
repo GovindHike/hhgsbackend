@@ -92,6 +92,24 @@ export const addReaction = async (req, res) => {
   return res.status(StatusCodes.OK).json({ announcement: updated });
 };
 
+export const deleteAnnouncement = async (req, res) => {
+  const { id } = req.params;
+  const announcement = await Announcement.findById(id);
+  if (!announcement) {
+    return res.status(StatusCodes.NOT_FOUND).json({ message: "Announcement not found" });
+  }
+
+  const isAdmin = req.user.role === "Admin";
+  const isOwner = String(announcement.createdBy) === String(req.user._id);
+
+  if (!isAdmin && !isOwner) {
+    return res.status(StatusCodes.FORBIDDEN).json({ message: "Not authorized to delete this announcement" });
+  }
+
+  await Announcement.findByIdAndDelete(id);
+  return res.status(StatusCodes.OK).json({ message: "Announcement deleted" });
+};
+
 export const addReply = async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;

@@ -33,7 +33,9 @@ export const createApp = () => {
 
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
-  app.use(helmet());
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  }));
   app.use(compression());
   app.use(express.json({ limit: "2mb" }));
   app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
