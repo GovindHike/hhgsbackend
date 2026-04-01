@@ -6,6 +6,7 @@ import { startAutoCheckoutJob } from "./jobs/autoCheckoutJob.js";
 import { startDailyReportJob } from "./jobs/dailyReportJob.js";
 import { migrateLeaveBalance } from "./jobs/migrateLeaveBalance.js";
 import { resetLeaveBalances, startLeaveResetJob } from "./jobs/leaveResetJob.js";
+import { startCelebrationJob } from "./jobs/celebrationJob.js";
 import { initSocketServer } from "./socket/socketServer.js";
 
 const startServer = async () => {
@@ -24,6 +25,7 @@ const startServer = async () => {
   startAutoCheckoutJob();
   startDailyReportJob();
   startLeaveResetJob();
+  startCelebrationJob();
 };
 
 startServer();

@@ -15,7 +15,12 @@ export const env = {
   smtpSecure: process.env.SMTP_SECURE === "true",
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
+  smtpConnectionTimeoutMs: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
+  smtpGreetingTimeoutMs: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+  smtpSocketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
+  smtpOperationTimeoutMs: Number(process.env.SMTP_OPERATION_TIMEOUT_MS || 15000),
   mailFrom: process.env.MAIL_FROM || "Office Management <no-reply@example.com>",
   autoCheckoutCron: process.env.AUTO_CHECKOUT_CRON || "59 23 * * *",
-  dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *"
+  dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *",
+  celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *"
 };

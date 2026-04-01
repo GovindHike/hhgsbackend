@@ -34,18 +34,9 @@ export const createUser = async (req, res) => {
     password: temporaryPassword
   });
 
-  try {
-    await sendEmail({ to: user.email, ...mail });
-  } catch (error) {
+  sendEmail({ to: user.email, ...mail }).catch((error) => {
     console.error(`Failed to send first-time password email to ${user.email}:`, error.message);
-    // Keep user created, but inform API consumer that email could not be delivered.
-    return res.status(StatusCodes.CREATED).json({
-      success: true,
-      data: user,
-      warning: "User created but welcome email failed to send",
-      emailError: error.message
-    });
-  }
+  });
 
   res.status(StatusCodes.CREATED).json({
     success: true,

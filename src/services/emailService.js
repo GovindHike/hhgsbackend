@@ -5,6 +5,9 @@ const transporter = nodemailer.createTransport({
   host: env.smtpHost,
   port: env.smtpPort,
   secure: env.smtpSecure,
+  connectionTimeout: env.smtpConnectionTimeoutMs,
+  greetingTimeout: env.smtpGreetingTimeoutMs,
+  socketTimeout: env.smtpSocketTimeoutMs,
   auth: env.smtpUser && env.smtpPass ? { user: env.smtpUser, pass: env.smtpPass } : undefined
 });
 
@@ -22,11 +25,24 @@ export const sendEmail = async ({ to, cc, subject, html }) => {
     throw new Error("MAIL_FROM is not configured. Cannot send email.");
   }
 
-  await transporter.sendMail({
-    from: env.mailFrom,
-    to,
-    cc,
-    subject,
-    html
-  });
+  let timeoutId;
+
+  try {
+    await Promise.race([
+      transporter.sendMail({
+        from: env.mailFrom,
+        to,
+        cc,
+        subject,
+        html
+      }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Email send timed out after ${env.smtpOperationTimeoutMs}ms`));
+        }, env.smtpOperationTimeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };

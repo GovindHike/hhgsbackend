@@ -12,6 +12,10 @@ const settingSchema = new mongoose.Schema(
       type: String,
       default: "#2563eb",
       trim: true
+    },
+    templates: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   },
   {

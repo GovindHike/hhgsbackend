@@ -9,6 +9,9 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6, select: false },
     role: { type: String, enum: Object.values(ROLES), required: true, index: true },
     employeeCode: { type: String, unique: true, sparse: true },
+    dateOfBirth: { type: Date, default: null },
+    joiningDate: { type: Date, default: null },
+    profilePhotoUrl: { type: String, trim: true, default: "" },
     team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null, index: true },
     leaveBalance: {
       planned: { type: Number, default: 12, min: 0 },

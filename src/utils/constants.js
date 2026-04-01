@@ -1,7 +1,7 @@
 export const ROLES = {
   DIRECTOR: "Director",
   MANAGING_DIRECTOR: "Managing Director",
-  DO: "Do",
+  DO: "Director of operations",
   HR_ADMIN: "HR Administrator",
   FINANCE_ADMIN: "Finance & Admin",
   TECHNICAL_LEAD: "Technical Lead",

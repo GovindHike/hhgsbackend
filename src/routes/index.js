@@ -10,6 +10,7 @@ import adminRoutes from "./adminRoutes.js";
 import announcementRoutes from "./announcementRoutes.js";
 import notificationRoutes from "./notificationRoutes.js";
 import settingRoutes from "./settingRoutes.js";
+import celebrationRoutes from "./celebrationRoutes.js";
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use("/admin", adminRoutes);
 router.use("/announcements", announcementRoutes);
 router.use("/notifications", notificationRoutes);
 router.use("/settings", settingRoutes);
+router.use("/celebrations", celebrationRoutes);
 
 export default router;

@@ -34,11 +34,32 @@ const announcementSchema = new mongoose.Schema(
       }
     ],
     replies: [replySchema]
+    ,
+    autoMeta: {
+      source: {
+        type: String,
+        enum: ["birthday", "work_anniversary"],
+        default: null
+      },
+      user: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      dateKey: { type: String, trim: true, default: "" }
+    }
   },
   { timestamps: true }
 );
 
 announcementSchema.index({ createdAt: -1 });
+announcementSchema.index(
+  { "autoMeta.source": 1, "autoMeta.user": 1, "autoMeta.dateKey": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "autoMeta.source": { $exists: true, $ne: null },
+      "autoMeta.user": { $exists: true, $ne: null },
+      "autoMeta.dateKey": { $exists: true, $ne: "" }
+    }
+  }
+);
 
 export const Announcement = mongoose.model("Announcement", announcementSchema);
 export const ANNOUNCEMENT_REACTION_TYPES = reactionTypes;

@@ -23,6 +23,9 @@ export const userValidators = {
     email: emailRule.required(),
     role: Joi.string().valid(...Object.values(ROLES)).required(),
     employeeCode: Joi.string().allow("", null),
+    dateOfBirth: Joi.date().allow(null, ""),
+    joiningDate: Joi.date().allow(null, ""),
+    profilePhotoUrl: Joi.string().uri().allow("", null),
     team: Joi.string().allow(null, "")
   }),
   update: Joi.object({
@@ -30,6 +33,9 @@ export const userValidators = {
     email: emailRule,
     role: Joi.string().valid(...Object.values(ROLES)),
     employeeCode: Joi.string().allow("", null),
+    dateOfBirth: Joi.date().allow(null, ""),
+    joiningDate: Joi.date().allow(null, ""),
+    profilePhotoUrl: Joi.string().uri().allow("", null),
     team: Joi.string().allow(null, ""),
     isActive: Joi.boolean()
   }).min(1)
