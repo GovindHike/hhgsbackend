@@ -4,6 +4,6 @@ import { sendDailyProjectStatusReport } from "../services/reportService.js";
 
 export const startDailyReportJob = () => {
   cron.schedule(env.dailyReportCron, async () => {
-    await sendDailyProjectStatusReport();
+    // await sendDailyProjectStatusReport();
   });
 };

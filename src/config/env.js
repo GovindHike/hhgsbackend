@@ -21,6 +21,10 @@ export const env = {
   smtpOperationTimeoutMs: Number(process.env.SMTP_OPERATION_TIMEOUT_MS || 15000),
   mailFrom: process.env.MAIL_FROM || "Office Management <no-reply@example.com>",
   autoCheckoutCron: process.env.AUTO_CHECKOUT_CRON || "59 23 * * *",
+  // Evening job: auto-checkout morning check-ins (before 12:30 PM) at 7:30 PM
+  autoCheckoutEveningCron: process.env.AUTO_CHECKOUT_EVENING_CRON || "30 19 * * *",
+  // Night job: auto-checkout late check-ins (12:30 PM+) at 11:59 PM – runs 3 AM next day
+  autoCheckoutNightCron: process.env.AUTO_CHECKOUT_NIGHT_CRON || "0 3 * * *",
   dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *",
   celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *"
 };

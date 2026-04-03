@@ -28,7 +28,7 @@ export const createAnnouncement = async (req, res) => {
     type: "announcement",
     entityType: "announcement",
     entityId: announcement._id,
-    redirectUrl: "/announcement",
+    redirectUrl: "/announcements",
     createdBy: req.user._id
   });
 

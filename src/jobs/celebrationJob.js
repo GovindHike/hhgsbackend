@@ -102,7 +102,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate })
       type: "announcement",
       entityType: "announcement",
       entityId: announcement._id,
-      redirectUrl: "/announcement",
+      redirectUrl: "/announcements",
       createdBy: user._id
     });
 

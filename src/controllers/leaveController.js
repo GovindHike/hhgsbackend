@@ -16,15 +16,15 @@ function getAvailableBalance(leaveBalance, type) {
   return leaveBalance[getBalanceField(type)] ?? 0;
 }
 
+function getLeaveUnits(leave) {
+  return leave.leaveType === "Half Day"
+    ? 0.5
+    : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+}
+
 export const createLeave = async (req, res) => {
   const requester = await User.findById(req.user._id).select("leaveBalance name role team");
-  const leaveUnits =
-    req.body.leaveType === "Half Day"
-      ? 0.5
-      : Math.max(
-          1,
-          Math.ceil((new Date(req.body.endDate) - new Date(req.body.startDate)) / (1000 * 60 * 60 * 24)) + 1
-        );
+  const leaveUnits = getLeaveUnits(req.body);
 
   const balanceField = getBalanceField(req.body.requestedType);
   const availableBalance = getAvailableBalance(requester.leaveBalance, req.body.requestedType);
@@ -205,54 +205,88 @@ export const decideLeave = async (req, res) => {
   }
 
   const { action } = req.body;
+  const decisionReason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
 
   if (!["approve", "approve_sick", "convert_planned", "reject"].includes(action)) {
     throw new AppError("Invalid decision action", StatusCodes.BAD_REQUEST);
   }
+
+  if (action === "reject" && !decisionReason) {
+    throw new AppError("Rejection reason is required", StatusCodes.BAD_REQUEST);
+  }
+
+  const previousDecision = {
+    validationStatus: leave.validationStatus,
+    status: leave.status,
+    finalType: leave.finalType,
+    isDeducted: leave.isDeducted
+  };
 
   if (action === "reject") {
     leave.validationStatus = "REJECTED";
     leave.finalType = null;
     leave.status = "Rejected";
     leave.adminOverride = true;
+    leave.decisionReason = decisionReason;
   } else if (action === "approve") {
     // Generic approve — honours whatever the employee requested
     leave.validationStatus = "APPROVED";
     leave.finalType = leave.requestedType;
     leave.status = "Approved";
     leave.adminOverride = true;
+    leave.decisionReason = null;
   } else if (action === "approve_sick") {
     leave.validationStatus = "APPROVED";
     leave.finalType = "SICK";
     leave.status = "Approved";
     leave.adminOverride = true;
+    leave.decisionReason = null;
   } else if (action === "convert_planned") {
     leave.validationStatus = "APPROVED";
     leave.finalType = "PLANNED";
     leave.status = "Approved";
     leave.adminOverride = true;
+    leave.decisionReason = null;
   }
 
   leave.approvedBy = req.user._id;
   leave.decisionAt = new Date();
 
-  // Only deduct from balance if leave is approved and not rejected/cancelled
-  if (!leave.isDeducted && leave.validationStatus === "APPROVED" && leave.status === "Approved" && leave.finalType) {
-    const leaveUnits =
-      leave.leaveType === "Half Day"
-        ? 0.5
-        : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
-    const balanceField = getBalanceField(leave.finalType);
-    await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${balanceField}`]: -leaveUnits } });
-    leave.isDeducted = true;
+  const wasApprovedAndDeducted =
+    previousDecision.isDeducted && previousDecision.validationStatus === "APPROVED" && previousDecision.status === "Approved" && previousDecision.finalType;
+  const isApprovedNow = leave.validationStatus === "APPROVED" && leave.status === "Approved" && leave.finalType;
+  const leaveUnits = getLeaveUnits(leave);
+
+  const typeChanged = previousDecision.finalType && leave.finalType && previousDecision.finalType !== leave.finalType;
+
+  if (wasApprovedAndDeducted && (!isApprovedNow || typeChanged)) {
+    const previousBalanceField = getBalanceField(previousDecision.finalType);
+    await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${previousBalanceField}`]: leaveUnits } });
   }
+
+  if (isApprovedNow && (!wasApprovedAndDeducted || typeChanged)) {
+    const userWithBalance = await User.findById(leave.user._id).select("leaveBalance").lean();
+    const availableBalance = getAvailableBalance(userWithBalance?.leaveBalance, leave.finalType);
+
+    if (leaveUnits > availableBalance) {
+      throw new AppError(
+        `Insufficient ${leave.finalType === "SICK" ? "sick" : "planned"} leave balance (available: ${availableBalance} day${availableBalance !== 1 ? "s" : ""})`,
+        StatusCodes.BAD_REQUEST
+      );
+    }
+
+    const nextBalanceField = getBalanceField(leave.finalType);
+    await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${nextBalanceField}`]: -leaveUnits } });
+  }
+
+  leave.isDeducted = Boolean(isApprovedNow);
 
   await leave.save();
 
   await createNotification({
     recipients: [leave.user._id],
     title: leave.status === "Approved" ? "Leave Approved" : "Leave Rejected",
-    message: `${req.user.name} ${leave.status === "Approved" ? "approved" : "rejected"} your leave request.`,
+    message: `${req.user.name} ${leave.status === "Approved" ? "approved" : "rejected"} your leave request.${leave.status === "Rejected" && leave.decisionReason ? ` Reason: ${leave.decisionReason}` : ""}`,
     type: "leave_status_updated",
     entityType: "Leave",
     entityId: leave._id,
@@ -283,10 +317,7 @@ export const cancelLeave = async (req, res) => {
   }
 
   if (leave.status === "Approved" && leave.isDeducted && leave.finalType) {
-    const leaveUnits =
-      leave.leaveType === "Half Day"
-        ? 0.5
-        : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+    const leaveUnits = getLeaveUnits(leave);
     const balanceField = getBalanceField(leave.finalType);
     await User.findByIdAndUpdate(leave.user._id, { $inc: { [`leaveBalance.${balanceField}`]: leaveUnits } });
     leave.isDeducted = false;

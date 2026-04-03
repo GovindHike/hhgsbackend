@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { checkIn, checkOut, getAttendance, getMyTodayAttendance } from "../controllers/attendanceController.js";
+import { adminForceCheckout, checkIn, checkOut, getAttendance, getMyTodayAttendance } from "../controllers/attendanceController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
-import { ALL_ROLES } from "../utils/constants.js";
+import { ADMIN_ROLES, ALL_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
@@ -10,5 +10,8 @@ router.get("/me/today", getMyTodayAttendance);
 router.post("/check-in", authorize(...ALL_ROLES), checkIn);
 router.post("/check-out", authorize(...ALL_ROLES), checkOut);
 router.get("/", authorize(...ALL_ROLES), getAttendance);
+
+// Admin: force-close an open session on any attendance record
+router.post("/:id/force-checkout", authorize(...ADMIN_ROLES), adminForceCheckout);
 
 export default router;

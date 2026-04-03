@@ -40,8 +40,16 @@ const buildProjectSummary = (tasks) => {
 };
 
 export const getDailyProjectStatusReportPayload = async () => {
-  const todayStart = dayjs().startOf("day").toDate();
-  const todayEnd = dayjs().endOf("day").toDate();
+  // Compute IST day boundaries without requiring dayjs plugins.
+  // IST = UTC+5:30 (330 min). Shift "now" forward by 5h30m to get the IST
+  // calendar date, derive midnight boundaries in that date, then shift back
+  // to UTC so MongoDB comparisons are correct.
+  const IST_OFFSET_MS = 330 * 60 * 1000; // 5h 30m in milliseconds
+  const nowIST     = new Date(Date.now() + IST_OFFSET_MS);          // current moment expressed as IST
+  const istDateStr = nowIST.toISOString().slice(0, 10);             // "YYYY-MM-DD" in IST
+  const todayStart = new Date(new Date(`${istDateStr}T00:00:00.000Z`).getTime() - IST_OFFSET_MS); // IST 00:00 → UTC
+  const todayEnd   = new Date(new Date(`${istDateStr}T23:59:59.999Z`).getTime() - IST_OFFSET_MS); // IST 23:59 → UTC
+
   const [tasks, leaves, employees, teamLeads, admins] = await Promise.all([
     Task.find({ taskDate: { $gte: todayStart, $lte: todayEnd } })
       .populate({
@@ -53,7 +61,7 @@ export const getDailyProjectStatusReportPayload = async () => {
     Leave.find({
       status: { $in: ["Approved", "Pending"] },
       startDate: { $lte: todayEnd },
-      endDate: { $gte: todayStart }
+      endDate:   { $gte: todayStart }
     })
       .populate("user", "name")
       .lean(),
@@ -68,10 +76,13 @@ export const getDailyProjectStatusReportPayload = async () => {
     completed: tasks.filter((task) => task.status === "Completed").length,
     pending: tasks.filter((task) => task.status !== "Completed").length
   };
+  const toISTDateStr = (date) => new Date(new Date(date).getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+
   const leaveSummary = leaves.map((leave) => ({
     employeeName: leave.user?.name || "Unknown",
     leaveType: leave.requestedType || leave.finalType || "N/A",
-    leaveDuration: `${dayjs(leave.startDate).format("YYYY-MM-DD")} to ${dayjs(leave.endDate).format("YYYY-MM-DD")}`,
+    // Format dates in IST so the displayed date matches what the user selected
+    leaveDuration: `${toISTDateStr(leave.startDate)} to ${toISTDateStr(leave.endDate)}`,
     leaveStatus: leave.status
   }));
 

@@ -14,6 +14,7 @@ const leaveSchema = new mongoose.Schema(
     doctorProof: { type: String, default: null },
     adminOverride: { type: Boolean, default: false },
     reason: { type: String, required: true, trim: true },
+    decisionReason: { type: String, default: null, trim: true },
     status: { type: String, enum: LEAVE_STATUSES, default: "Pending", index: true },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     decisionAt: { type: Date, default: null },

@@ -2,7 +2,7 @@ import { StatusCodes } from "http-status-codes";
 import dayjs from "dayjs";
 import { Attendance } from "../models/Attendance.js";
 import { computeAttendanceSummary } from "../utils/attendance.js";
-import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
+import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES, ADMIN_ROLES } from "../utils/constants.js";
 import { User } from "../models/User.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
@@ -79,17 +79,58 @@ export const checkOut = async (req, res) => {
   res.status(StatusCodes.OK).json({ attendance });
 };
 
-export const notifyAutoCheckout = async (userId, attendanceId) => {
+export const notifyAutoCheckout = async (userId, attendanceId, checkoutTime = "11:59 PM") => {
   await createNotification({
     recipients: [userId],
     title: "Auto checked-out",
-    message: "Your attendance session was auto checked-out at 11:59 PM.",
+    message: `Your attendance session was auto checked-out at ${checkoutTime}.`,
     type: "attendance_auto_checkout",
     entityType: "Attendance",
     entityId: attendanceId,
     referenceId: attendanceId,
     redirectUrl: "/attendance"
   });
+};
+
+/**
+ * Admin: Force-checkout an open attendance session.
+ * - Morning check-ins (before 12:30 PM) → check out at 07:30 PM.
+ * - Late check-ins (12:30 PM or later)  → check out at 11:59 PM.
+ */
+export const adminForceCheckout = async (req, res) => {
+  const { id } = req.params;
+
+  const attendance = await Attendance.findById(id);
+  if (!attendance) {
+    return res.status(StatusCodes.NOT_FOUND).json({ message: "Attendance record not found" });
+  }
+
+  const lastSession = attendance.sessions.at(-1);
+  if (!lastSession || lastSession.checkOut) {
+    return res.status(StatusCodes.BAD_REQUEST).json({ message: "No active check-in session found" });
+  }
+
+  const dateStr = attendance.date; // "YYYY-MM-DD"
+  const checkInTime = dayjs(lastSession.checkIn);
+  const cutoff = dayjs(`${dateStr} 12:30:00`);
+
+  let checkoutAt;
+  if (checkInTime.isBefore(cutoff)) {
+    // Morning check-in → 7:30 PM
+    checkoutAt = dayjs(`${dateStr} 19:30:00`);
+  } else {
+    // Late check-in → 11:59 PM
+    checkoutAt = dayjs(`${dateStr} 23:59:00`);
+  }
+
+  lastSession.checkOut = checkoutAt.toDate();
+  const summary = computeAttendanceSummary(attendance.sessions);
+  attendance.totalHours = summary.totalHours;
+  await attendance.save();
+
+  await notifyAutoCheckout(attendance.user, attendance._id, checkoutAt.format("hh:mm A"));
+
+  res.status(StatusCodes.OK).json({ attendance });
 };
 
 export const getAttendance = async (req, res) => {
