@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import { ROLES } from "../utils/constants.js";
+import { ROLES, SHIFT_TYPES } from "../utils/constants.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
     joiningDate: { type: Date, default: null },
     profilePhotoUrl: { type: String, trim: true, default: "" },
     team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null, index: true },
+    shift: { type: String, enum: SHIFT_TYPES, default: "Shift 1" },
     leaveBalance: {
       planned: { type: Number, default: 12, min: 0 },
       sick: { type: Number, default: 6, min: 0 }

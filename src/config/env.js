@@ -5,6 +5,15 @@ dotenv.config();
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT || 5000),
+  trustProxyHops: Number(process.env.TRUST_PROXY || 1),
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  rateLimitMax: Number(process.env.RATE_LIMIT_MAX || (process.env.NODE_ENV === "production" ? 5000 : 1500)),
+  authRateLimitWindowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 25),
+  announcementReadRateLimitWindowMs: Number(process.env.ANNOUNCEMENT_READ_RATE_LIMIT_WINDOW_MS || 60 * 1000),
+  announcementReadRateLimitMax: Number(process.env.ANNOUNCEMENT_READ_RATE_LIMIT_MAX || 120),
+  announcementWriteRateLimitWindowMs: Number(process.env.ANNOUNCEMENT_WRITE_RATE_LIMIT_WINDOW_MS || 60 * 1000),
+  announcementWriteRateLimitMax: Number(process.env.ANNOUNCEMENT_WRITE_RATE_LIMIT_MAX || 40),
   mongoUri: process.env.MONGO_URI || "",
   jwtSecret: process.env.JWT_SECRET || "",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "1d",
@@ -20,10 +29,8 @@ export const env = {
   smtpSocketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
   smtpOperationTimeoutMs: Number(process.env.SMTP_OPERATION_TIMEOUT_MS || 15000),
   mailFrom: process.env.MAIL_FROM || "Office Management <no-reply@example.com>",
-  autoCheckoutCron: process.env.AUTO_CHECKOUT_CRON || "59 23 * * *",
-  // Evening job: auto-checkout morning check-ins (before 12:30 PM) at 7:30 PM
+  autoCheckoutCron: process.env.AUTO_CHECKOUT_CRON || "*/10 * * * *",
   autoCheckoutEveningCron: process.env.AUTO_CHECKOUT_EVENING_CRON || "30 19 * * *",
-  // Night job: auto-checkout late check-ins (12:30 PM+) at 11:59 PM – runs 3 AM next day
   autoCheckoutNightCron: process.env.AUTO_CHECKOUT_NIGHT_CRON || "0 3 * * *",
   dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *",
   celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *"

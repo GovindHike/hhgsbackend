@@ -11,8 +11,20 @@ import routes from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorMiddleware.js";
 import { env } from "./config/env.js";
 
+const getRetryAfterSeconds = (req) => {
+  const resetTime = req.rateLimit?.resetTime;
+
+  if (!(resetTime instanceof Date)) {
+    return undefined;
+  }
+
+  return Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000));
+};
+
 export const createApp = () => {
   const app = express();
+  app.set("trust proxy", env.trustProxyHops);
+
   const allowedOrigins = [env.frontendUrl].filter(Boolean);
   const corsOptions = {
     origin(origin, callback) {
@@ -39,18 +51,26 @@ export const createApp = () => {
   app.use(compression());
   app.use(express.json({ limit: "2mb" }));
   app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
-  app.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 300,
-      standardHeaders: true,
-      legacyHeaders: false
-    })
-  );
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
+
+  app.use(
+    rateLimit({
+      windowMs: env.rateLimitWindowMs,
+      limit: env.rateLimitMax,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: (req) => req.method === "OPTIONS" || req.path === "/health" || req.path.startsWith("/api/auth"),
+      handler: (req, res) => {
+        res.status(429).json({
+          message: "Too many requests, please try again later.",
+          retryAfterSeconds: getRetryAfterSeconds(req)
+        });
+      }
+    })
+  );
 
   const uploadsDir = path.join(process.cwd(), "uploads");
   const announcementsDir = path.join(uploadsDir, "announcements");

@@ -2,75 +2,87 @@ import cron from "node-cron";
 import dayjs from "dayjs";
 import { env } from "../config/env.js";
 import { Attendance } from "../models/Attendance.js";
-import { computeAttendanceSummary } from "../utils/attendance.js";
-import { notifyAutoCheckout } from "../controllers/attendanceController.js";
+import { Setting } from "../models/Setting.js";
+import { User } from "../models/User.js";
+import { computeAttendanceSummary, DEFAULT_ATTENDANCE_POLICY, getShiftWindow, normalizeAttendancePolicy, resolveShiftSnapshot } from "../utils/attendance.js";
+import { notifyAutoCheckout, notifyMissedCheckoutReminder } from "../controllers/attendanceController.js";
 
-/**
- * Auto-checkout logic:
- *  - Morning check-ins (checkIn < 12:30 PM): auto checkout at 7:30 PM same day.
- *    Cron runs at 7:30 PM daily (env.autoCheckoutEveningCron).
- *  - Late check-ins (checkIn >= 12:30 PM): auto checkout at 11:59 PM same day.
- *    Cron runs at 3:00 AM the next day (env.autoCheckoutNightCron) and looks back at the previous date.
- */
-export const startAutoCheckoutJob = () => {
-  // ─── Evening job: 7:30 PM ───────────────────────────────────────────────────
-  // Handles morning check-ins (before 12:30 PM) that still have an open session.
-  cron.schedule(env.autoCheckoutEveningCron, async () => {
-    try {
-      const date = dayjs().format("YYYY-MM-DD");
-      const cutoff = dayjs(`${date} 12:30:00`);
-      const checkoutAt = dayjs(`${date} 19:30:00`);
+const ATTENDANCE_POLICY_KEY = "attendance_policy";
 
-      const records = await Attendance.find({ date });
+const getAttendancePolicy = async () => {
+  const setting = await Setting.findOne({ key: ATTENDANCE_POLICY_KEY }).lean();
+  return normalizeAttendancePolicy(setting?.attendancePolicy || DEFAULT_ATTENDANCE_POLICY);
+};
 
-      await Promise.all(
-        records.map(async (record) => {
-          const lastSession = record.sessions.at(-1);
-          if (lastSession && !lastSession.checkOut) {
-            const checkInTime = dayjs(lastSession.checkIn);
-            if (checkInTime.isBefore(cutoff)) {
-              lastSession.checkOut = checkoutAt.toDate();
-              const summary = computeAttendanceSummary(record.sessions);
-              record.totalHours = summary.totalHours;
-              await record.save();
-              await notifyAutoCheckout(record.user, record._id, "07:30 PM");
-            }
-          }
-        })
-      );
-    } catch (err) {
-      console.error("[autoCheckoutJob] Evening job error:", err);
-    }
+const resolveRecordShiftSnapshot = async (record, policy) => {
+  if (record?.shiftSnapshot?.startTime && record?.shiftSnapshot?.endTime) {
+    return record.shiftSnapshot;
+  }
+
+  const lastSession = record?.sessions?.at(-1);
+  if (lastSession?.shiftSnapshot?.startTime && lastSession?.shiftSnapshot?.endTime) {
+    record.shiftSnapshot = lastSession.shiftSnapshot;
+    return record.shiftSnapshot;
+  }
+
+  const attendanceUser = await User.findById(record.user).select("shift").lean();
+  record.shiftSnapshot = resolveShiftSnapshot({
+    shift: attendanceUser?.shift || "Shift 1",
+    dateKey: record.date,
+    policy
   });
 
-  // ─── Night job: 3:00 AM (next day) ──────────────────────────────────────────
-  // Handles late check-ins (12:30 PM or later on the previous day) that still
-  // have an open session. Sets their checkout time to 11:59 PM of the check-in date.
-  cron.schedule(env.autoCheckoutNightCron, async () => {
-    try {
-      const prevDate = dayjs().subtract(1, "day").format("YYYY-MM-DD");
-      const cutoff = dayjs(`${prevDate} 12:30:00`);
-      const checkoutAt = dayjs(`${prevDate} 23:59:00`);
+  if (lastSession && !lastSession.shiftSnapshot) {
+    lastSession.shiftSnapshot = record.shiftSnapshot;
+  }
 
-      const records = await Attendance.find({ date: prevDate });
+  return record.shiftSnapshot;
+};
+
+export const startAutoCheckoutJob = () => {
+  cron.schedule(env.autoCheckoutCron, async () => {
+    try {
+      const candidateDates = [dayjs().format("YYYY-MM-DD"), dayjs().subtract(1, "day").format("YYYY-MM-DD")];
+      const records = await Attendance.find({ date: { $in: candidateDates } });
+      const attendancePolicy = await getAttendancePolicy();
 
       await Promise.all(
         records.map(async (record) => {
           const lastSession = record.sessions.at(-1);
-          if (lastSession && !lastSession.checkOut) {
-            const checkInTime = dayjs(lastSession.checkIn);
-            if (!checkInTime.isBefore(cutoff)) {
-              lastSession.checkOut = checkoutAt.toDate();
-              const summary = computeAttendanceSummary(record.sessions);
-              record.totalHours = summary.totalHours;
-              await record.save();
-              await notifyAutoCheckout(record.user, record._id, "11:59 PM");
-            }
+          if (!lastSession || lastSession.checkOut) {
+            return;
+          }
+
+          const shiftSnapshot = await resolveRecordShiftSnapshot(record, attendancePolicy);
+
+          const { shiftEnd, reminderAt, autoCheckoutAt } = getShiftWindow(record.date, shiftSnapshot);
+          const now = dayjs();
+
+          if (!lastSession.reminderSentAt && now.isAfter(reminderAt) && now.isBefore(autoCheckoutAt)) {
+            lastSession.reminderSentAt = now.toDate();
+            await record.save();
+            await notifyMissedCheckoutReminder(record.user, record._id, shiftEnd.format("hh:mm A"));
+            return;
+          }
+
+          if (now.isAfter(autoCheckoutAt)) {
+            lastSession.checkOut = shiftEnd.toDate();
+            lastSession.autoCheckoutApplied = true;
+            lastSession.autoCheckedOutAt = now.toDate();
+            const summary = computeAttendanceSummary(record.sessions, record.shiftSnapshot || shiftSnapshot);
+            record.totalHours = summary.totalHours;
+            record.totalLunchMinutes = summary.totalLunchMinutes;
+            record.totalPermissionMinutes = summary.totalPermissionMinutes;
+            record.expectedHours = summary.expectedHours;
+            record.varianceHours = summary.varianceHours;
+            record.missedCheckoutCount = summary.missedCheckoutCount;
+            await record.save();
+            await notifyAutoCheckout(record.user, record._id, shiftEnd.format("hh:mm A"));
           }
         })
       );
     } catch (err) {
-      console.error("[autoCheckoutJob] Night job error:", err);
+      console.error("[autoCheckoutJob] Shift-aware job error:", err);
     }
   });
 };

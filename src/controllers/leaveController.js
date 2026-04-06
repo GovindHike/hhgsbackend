@@ -1,11 +1,16 @@
+import dayjs from "dayjs";
+import isSameOrBefore from "dayjs/plugin/isSameOrBefore.js";
+dayjs.extend(isSameOrBefore);
 import { StatusCodes } from "http-status-codes";
 import { Leave } from "../models/Leave.js";
 import { User } from "../models/User.js";
+import { Setting } from "../models/Setting.js";
 import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
 import { currentLeaveYearStart, leaveYearLabel } from "../jobs/leaveResetJob.js";
+import { DEFAULT_ATTENDANCE_POLICY, normalizeAttendancePolicy } from "../utils/attendance.js";
 
 function getBalanceField(type) {
   return type === "SICK" ? "sick" : "planned";
@@ -16,15 +21,54 @@ function getAvailableBalance(leaveBalance, type) {
   return leaveBalance[getBalanceField(type)] ?? 0;
 }
 
-function getLeaveUnits(leave) {
-  return leave.leaveType === "Half Day"
-    ? 0.5
-    : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+const ATTENDANCE_POLICY_KEY = "attendance_policy";
+
+const getAttendancePolicy = async () => {
+  const setting = await Setting.findOne({ key: ATTENDANCE_POLICY_KEY }).lean();
+  return normalizeAttendancePolicy(setting?.attendancePolicy || DEFAULT_ATTENDANCE_POLICY);
+};
+
+const isWorkingDay = (date, policy) => {
+  const normalized = dayjs(date).startOf("day");
+  const isoWeekday = normalized.isoWeekday();
+  if (!policy.workWeekDays.includes(isoWeekday)) return false;
+  const holidayDates = new Set((policy.holidays || []).map((holiday) => dayjs(holiday.date).format("YYYY-MM-DD")));
+  return !holidayDates.has(normalized.format("YYYY-MM-DD"));
+};
+
+function getLeaveUnits(leave, policy) {
+  if (!policy) {
+    return leave.leaveType === "Half Day"
+      ? 0.5
+      : Math.max(1, Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+  }
+
+  if (leave.leaveType === "Half Day") {
+    return isWorkingDay(leave.startDate, policy) ? 0.5 : 0;
+  }
+
+  let units = 0;
+  let current = dayjs(leave.startDate).startOf("day");
+  const end = dayjs(leave.endDate).startOf("day");
+
+  while (current.isSameOrBefore(end, "day")) {
+    if (isWorkingDay(current, policy)) {
+      units += 1;
+    }
+    current = current.add(1, "day");
+  }
+
+  return Math.max(0, units);
 }
 
 export const createLeave = async (req, res) => {
   const requester = await User.findById(req.user._id).select("leaveBalance name role team");
-  const leaveUnits = getLeaveUnits(req.body);
+  const policy = await getAttendancePolicy();
+  const leaveUnits = getLeaveUnits(req.body, policy);
+
+  if (leaveUnits <= 0) {
+    throw new AppError("Leave request must include at least one working day.", StatusCodes.BAD_REQUEST);
+  }
 
   const balanceField = getBalanceField(req.body.requestedType);
   const availableBalance = getAvailableBalance(requester.leaveBalance, req.body.requestedType);
@@ -149,6 +193,7 @@ export const getLeaveBalance = async (req, res) => {
   yearEnd.setFullYear(yearEnd.getFullYear() + 1);
 
   // Calculate used leaves for current FY (approved leaves only)
+  const policy = await getAttendancePolicy();
   const approvedLeaves = await Leave.find({
     user: req.user._id,
     status: "Approved",
@@ -160,13 +205,7 @@ export const getLeaveBalance = async (req, res) => {
   let sickUsed = 0;
 
   for (const leave of approvedLeaves) {
-    const leaveUnits =
-      leave.leaveType === "Half Day"
-        ? 0.5
-        : Math.max(
-            1,
-            Math.ceil((new Date(leave.endDate) - new Date(leave.startDate)) / (1000 * 60 * 60 * 24)) + 1
-          );
+    const leaveUnits = getLeaveUnits(leave, policy);
 
     if (leave.finalType === "PLANNED") {
       plannedUsed += leaveUnits;
@@ -252,10 +291,11 @@ export const decideLeave = async (req, res) => {
   leave.approvedBy = req.user._id;
   leave.decisionAt = new Date();
 
+  const policy = await getAttendancePolicy();
   const wasApprovedAndDeducted =
     previousDecision.isDeducted && previousDecision.validationStatus === "APPROVED" && previousDecision.status === "Approved" && previousDecision.finalType;
   const isApprovedNow = leave.validationStatus === "APPROVED" && leave.status === "Approved" && leave.finalType;
-  const leaveUnits = getLeaveUnits(leave);
+  const leaveUnits = getLeaveUnits(leave, policy);
 
   const typeChanged = previousDecision.finalType && leave.finalType && previousDecision.finalType !== leave.finalType;
 

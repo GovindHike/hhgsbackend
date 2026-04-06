@@ -1,7 +1,9 @@
 import { StatusCodes } from "http-status-codes";
 import { Setting } from "../models/Setting.js";
+import { DEFAULT_ATTENDANCE_POLICY, normalizeAttendancePolicy } from "../utils/attendance.js";
 
 const THEME_KEY = "theme";
+const ATTENDANCE_POLICY_KEY = "attendance_policy";
 const DEFAULT_PRIMARY_COLOR = "#2563eb";
 
 const getThemeSetting = async () => {
@@ -35,5 +37,36 @@ export const updateTheme = async (req, res) => {
     theme: {
       primaryColor: setting.primaryColor
     }
+  });
+};
+
+const getAttendancePolicySetting = async () => {
+  const setting = await Setting.findOne({ key: ATTENDANCE_POLICY_KEY }).lean();
+  return normalizeAttendancePolicy(setting?.attendancePolicy || DEFAULT_ATTENDANCE_POLICY);
+};
+
+export const getAttendancePolicy = async (_req, res) => {
+  const attendancePolicy = await getAttendancePolicySetting();
+  res.status(StatusCodes.OK).json({ attendancePolicy });
+};
+
+export const updateAttendancePolicy = async (req, res) => {
+  const attendancePolicy = normalizeAttendancePolicy(req.body);
+  const setting = await Setting.findOneAndUpdate(
+    { key: ATTENDANCE_POLICY_KEY },
+    {
+      key: ATTENDANCE_POLICY_KEY,
+      attendancePolicy
+    },
+    {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true
+    }
+  ).lean();
+
+  res.status(StatusCodes.OK).json({
+    message: "Attendance policy updated successfully",
+    attendancePolicy: normalizeAttendancePolicy(setting.attendancePolicy)
   });
 };

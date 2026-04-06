@@ -1,5 +1,5 @@
 import Joi from "joi";
-import { ASSET_STATUSES, LEAVE_STATUSES, ROLES, TASK_STATUSES } from "./utils/constants.js";
+import { ASSET_STATUSES, LEAVE_STATUSES, ROLES, SHIFT_TYPES, TASK_STATUSES } from "./utils/constants.js";
 
 const emailRule = Joi.string().email({ tlds: { allow: false } });
 
@@ -26,7 +26,8 @@ export const userValidators = {
     dateOfBirth: Joi.date().allow(null, ""),
     joiningDate: Joi.date().allow(null, ""),
     profilePhotoUrl: Joi.string().uri().allow("", null),
-    team: Joi.string().allow(null, "")
+    team: Joi.string().allow(null, ""),
+    shift: Joi.string().valid(...SHIFT_TYPES).default("Shift 1")
   }),
   update: Joi.object({
     name: Joi.string(),
@@ -37,8 +38,48 @@ export const userValidators = {
     joiningDate: Joi.date().allow(null, ""),
     profilePhotoUrl: Joi.string().uri().allow("", null),
     team: Joi.string().allow(null, ""),
+    shift: Joi.string().valid(...SHIFT_TYPES),
     isActive: Joi.boolean()
   }).min(1)
+};
+
+const scheduleVariantValidator = Joi.object({
+  label: Joi.string().trim().required(),
+  startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  endTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  effectiveFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(null, ""),
+  effectiveTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).allow(null, ""),
+  isDefault: Joi.boolean().default(false)
+});
+
+const shiftPolicyValidator = Joi.object({
+  name: Joi.string().trim().required(),
+  startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  endTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  variants: Joi.array().items(scheduleVariantValidator).default([])
+});
+
+export const settingValidators = {
+  updateAttendancePolicy: Joi.object({
+    dailyTargetHours: Joi.number().min(1).max(24).required(),
+    reminderDelayMinutes: Joi.number().integer().min(0).max(720).required(),
+    autoCheckoutDelayMinutes: Joi.number().integer().min(1).max(1440).required(),
+    lunchIncludedInShift: Joi.boolean().required(),
+    autoDeductLunchMinutes: Joi.number().integer().min(0).max(180).required(),
+    workWeekDays: Joi.array().items(Joi.number().integer().min(1).max(7)).default([1, 2, 3, 4, 5]),
+    holidays: Joi.array()
+      .items(
+        Joi.object({
+          date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+          label: Joi.string().trim().allow("", null)
+        })
+      )
+      .default([]),
+    shifts: Joi.object({
+      shift1: shiftPolicyValidator.required(),
+      shift2: shiftPolicyValidator.required()
+    }).required()
+  })
 };
 
 export const teamValidators = {
