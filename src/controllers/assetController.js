@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { StatusCodes } from "http-status-codes";
 import { Asset } from "../models/Asset.js";
 import { buildAssetNumber } from "../utils/asset.js";
@@ -55,6 +56,14 @@ export const getAssets = async (req, res) => {
   const filter = {};
   if (!isAdminRole(req.user.role)) {
     filter.assignedTo = req.user._id;
+  } else if (req.query.assignedTo === "__UNASSIGNED__") {
+    filter.assignedTo = null;
+  } else if (req.query.assignedTo) {
+    if (!mongoose.isValidObjectId(req.query.assignedTo)) {
+      throw new AppError("Invalid assigned user filter", StatusCodes.BAD_REQUEST);
+    }
+
+    filter.assignedTo = new mongoose.Types.ObjectId(req.query.assignedTo);
   }
   if (req.query.status) filter.status = req.query.status;
   if (req.query.type) filter.type = req.query.type;
@@ -66,19 +75,46 @@ export const getAssets = async (req, res) => {
   }
 
   const { page, limit, skip } = parsePagination(req.query);
-  const [assets, total] = await Promise.all([
-    Asset.find(filter)
+  const sortBy = req.query.sortBy === "uniqueAssetId" ? "uniqueAssetId" : "createdAt";
+  const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+  let assets;
+  const total = await Asset.countDocuments(filter);
+
+  if (sortBy === "uniqueAssetId") {
+    assets = await Asset.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          uniqueAssetIdLength: { $strLenCP: { $ifNull: ["$uniqueAssetId", ""] } },
+          uniqueAssetIdSortValue: { $toUpper: { $ifNull: ["$uniqueAssetId", ""] } }
+        }
+      },
+      { $sort: { uniqueAssetIdLength: sortOrder, uniqueAssetIdSortValue: sortOrder, _id: 1 } },
+      { $skip: skip },
+      { $limit: limit },
+      { $project: { uniqueAssetIdLength: 0, uniqueAssetIdSortValue: 0 } }
+    ]);
+
+    assets = await Asset.populate(assets, [
+      { path: "assignedTo", select: "name email employeeCode" },
+      { path: "history.assignedTo", select: "name email" },
+      { path: "history.assignedBy", select: "name email" },
+      { path: "movements.employee", select: "name email employeeCode" },
+      { path: "movements.recordedBy", select: "name email role" }
+    ]);
+  } else {
+    assets = await Asset.find(filter)
       .populate("assignedTo", "name email employeeCode")
       .populate("history.assignedTo", "name email")
       .populate("history.assignedBy", "name email")
       .populate("movements.employee", "name email employeeCode")
       .populate("movements.recordedBy", "name email role")
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: sortOrder })
       .skip(skip)
       .limit(limit)
-      .lean(),
-    Asset.countDocuments(filter)
-  ]);
+      .lean();
+  }
+
   res.status(StatusCodes.OK).json({ assets, ...buildPaginatedResponse({ items: assets, total, page, limit }) });
 };
 

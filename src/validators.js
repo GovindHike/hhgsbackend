@@ -179,7 +179,18 @@ export const taskValidators = {
   updateStatus: Joi.object({
     status: Joi.string().valid(...TASK_STATUSES).required()
   }),
+  update: Joi.object({
+    title: Joi.string(),
+    description: Joi.string().allow("", null),
+    projectName: Joi.string().allow("", null),
+    assignedTo: Joi.string().allow("", null),
+    taskDate: Joi.date(),
+    dueDate: Joi.date().allow(null)
+  }).min(1),
   command: Joi.object({
+    message: Joi.string().trim().required()
+  }),
+  editCommand: Joi.object({
     message: Joi.string().trim().required()
   })
 };

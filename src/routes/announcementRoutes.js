@@ -5,7 +5,7 @@ import path from "path";
 import { env } from "../config/env.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 import { ADMIN_ROLES } from "../utils/constants.js";
-import { createAnnouncement, getAnnouncements, addReaction, addReply, deleteAnnouncement } from "../controllers/announcementController.js";
+import { createAnnouncement, getAnnouncements, addReaction, addReply, deleteAnnouncement, updateAnnouncement, editReply, deleteReply } from "../controllers/announcementController.js";
 
 const router = Router();
 
@@ -69,7 +69,10 @@ router.post("/upload", protect, announcementWriteRateLimiter, authorize(...ADMIN
   const url = `${req.protocol}://${req.get("host")}/uploads/announcements/${req.file.filename}`;
   res.status(201).json({ url, type: req.file.mimetype.startsWith("video") ? "video" : "image" });
 });
+router.patch("/:id", protect, announcementWriteRateLimiter, authorize(...ADMIN_ROLES), updateAnnouncement);
 router.post("/:id/reactions", protect, announcementWriteRateLimiter, addReaction);
 router.post("/:id/replies", protect, announcementWriteRateLimiter, addReply);
+router.put("/:id/replies/:replyId", protect, announcementWriteRateLimiter, editReply);
+router.delete("/:id/replies/:replyId", protect, announcementWriteRateLimiter, deleteReply);
 
 export default router;

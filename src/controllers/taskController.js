@@ -264,6 +264,43 @@ export const commandTask = async (req, res) => {
   res.status(StatusCodes.OK).json({ message: "Command sent" });
 };
 
+export const updateTask = async (req, res) => {
+  const task = await Task.findById(req.params.id);
+  if (!task) {
+    throw new AppError("Task not found", StatusCodes.NOT_FOUND);
+  }
+
+  if (EMPLOYEE_ROLES.includes(req.user.role) && String(task.assignedTo) !== String(req.user._id)) {
+    throw new AppError("You can only update your own tasks", StatusCodes.FORBIDDEN);
+  }
+
+  if (TEAM_LEAD_ROLES.includes(req.user.role)) {
+    const memberIds = await getLeadTeamMemberIds(req.user);
+    if (!memberIds.includes(String(task.assignedTo))) {
+      throw new AppError("You can only update tasks within your team", StatusCodes.FORBIDDEN);
+    }
+    if (req.body.assignedTo && !memberIds.includes(String(req.body.assignedTo))) {
+      throw new AppError("You can only reassign tasks to team members", StatusCodes.FORBIDDEN);
+    }
+  }
+
+  const { title, description, projectName, taskDate, dueDate, assignedTo } = req.body;
+  if (title !== undefined) task.title = title;
+  if (description !== undefined) task.description = description;
+  if (projectName !== undefined) task.projectName = projectName || "General";
+  if (taskDate !== undefined) task.taskDate = taskDate;
+  if (dueDate !== undefined) task.dueDate = dueDate || null;
+  if (assignedTo !== undefined && !EMPLOYEE_ROLES.includes(req.user.role)) {
+    task.assignedTo = assignedTo;
+  }
+
+  await task.save();
+  await task.populate("assignedTo", "name email");
+  await task.populate("assignedBy", "name email");
+
+  res.status(StatusCodes.OK).json({ task });
+};
+
 export const deleteTask = async (req, res) => {
   const task = await Task.findById(req.params.id);
   if (!task) {
@@ -283,4 +320,41 @@ export const deleteTask = async (req, res) => {
 
   await task.deleteOne();
   res.status(StatusCodes.OK).json({ message: "Task deleted successfully" });
+};
+
+export const editCommand = async (req, res) => {
+  const { message } = req.body;
+  const task = await Task.findById(req.params.id);
+  if (!task) throw new AppError("Task not found", StatusCodes.NOT_FOUND);
+
+  const cmd = task.commands.id(req.params.commandId);
+  if (!cmd) throw new AppError("Command not found", StatusCodes.NOT_FOUND);
+
+  const isOwner = String(cmd.sentBy) === String(req.user._id);
+  const isPrivileged = TEAM_LEAD_ROLES.includes(req.user.role) || req.user.role === "admin";
+  if (!isOwner && !isPrivileged) {
+    throw new AppError("You can only edit your own commands", StatusCodes.FORBIDDEN);
+  }
+
+  cmd.message = message.trim();
+  await task.save();
+  res.status(StatusCodes.OK).json({ message: "Command updated" });
+};
+
+export const deleteCommand = async (req, res) => {
+  const task = await Task.findById(req.params.id);
+  if (!task) throw new AppError("Task not found", StatusCodes.NOT_FOUND);
+
+  const cmd = task.commands.id(req.params.commandId);
+  if (!cmd) throw new AppError("Command not found", StatusCodes.NOT_FOUND);
+
+  const isOwner = String(cmd.sentBy) === String(req.user._id);
+  const isPrivileged = TEAM_LEAD_ROLES.includes(req.user.role) || req.user.role === "admin";
+  if (!isOwner && !isPrivileged) {
+    throw new AppError("You can only delete your own commands", StatusCodes.FORBIDDEN);
+  }
+
+  cmd.deleteOne();
+  await task.save();
+  res.status(StatusCodes.OK).json({ message: "Command deleted" });
 };
