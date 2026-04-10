@@ -1,9 +1,12 @@
 import cron from "node-cron";
+import path from "path";
 import { env } from "../config/env.js";
 import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
 import { createNotification } from "../services/notificationService.js";
+import { generateBirthdayCard } from "../services/birthdayCardService.js";
+import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
 
 const CELEBRATION_KEY = "celebration_templates";
 
@@ -58,25 +61,68 @@ const getTemplates = async () => {
   };
 };
 
-const createCelebrationAnnouncement = async ({ source, user, template, onDate }) => {
-  const quote = template.defaultQuote || "";
-  const years = source === "work_anniversary" ? Math.max(yearsSince(new Date(user.joiningDate), onDate), 0) : "";
+/**
+ * Load the system / company user that will appear as the author of all
+ * auto-generated celebration announcements.
+ * Falls back to null so callers can substitute the employee's own account.
+ */
+const getSystemUser = async () => {
+  try {
+    return await User.findOne({ email: env.systemAuthorEmail })
+      .select("_id name role")
+      .lean();
+  } catch {
+    return null;
+  }
+};
+
+const createCelebrationAnnouncement = async ({ source, user, template, onDate, systemUser }) => {
+  const quote  = template.defaultQuote || "";
+  const years  = source === "work_anniversary" ? Math.max(yearsSince(new Date(user.joiningDate), onDate), 0) : "";
   const values = {
-    name: user.name,
+    name:  user.name,
     quote,
     years,
     photo: user.profilePhotoUrl || ""
   };
 
-  const title = render(template.titleTemplate, values).trim();
+  const title   = render(template.titleTemplate,   values).trim();
   const content = render(template.contentTemplate, values).trim();
-  const imageUrl = render(template.imageTemplate, values).trim();
 
-  if (!content) {
-    return null;
+  if (!content) return null;
+
+  // ── Birthday card: generate a composed PNG from the template image ────────
+  let media              = [];
+  let generatedLocalPath = null;
+
+  if (source === "birthday") {
+    const card = await generateBirthdayCard({
+      name:            user.name,
+      role:            user.role || "",
+      profilePhotoUrl: user.profilePhotoUrl || "",
+      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      baseUrl:         env.backendUrl,
+    });
+
+    if (card) {
+      media              = [{ type: "image", url: card.url }];
+      generatedLocalPath = card.localPath;
+    }
   }
 
-  const media = imageUrl ? [{ type: "image", url: imageUrl }] : [];
+  // For anniversaries (or if birthday card generation fails) fall back to the
+  // configured imageTemplate field.
+  if (!media.length) {
+    const imageUrl = render(template.imageTemplate, values).trim();
+    if (imageUrl && !imageUrl.includes("{{")) {
+      media = [{ type: "image", url: imageUrl }];
+    }
+  }
+
+  // Auto announcements are authored by the system / company account so the
+  // feed shows them as company posts rather than the employee's own post.
+  // If no system user is configured the employee's account is used as fallback.
+  const author   = systemUser || user;
   const todayKey = dateKeyFromDate(onDate);
 
   try {
@@ -84,55 +130,74 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate })
       title,
       content,
       media,
-      createdBy: user._id,
+      createdBy: author._id,
       autoMeta: {
         source,
-        user: user._id,
+        user:    user._id,
         dateKey: todayKey
       }
     });
 
-    const allUsers = await User.find({ isActive: true }).select("_id").lean();
+    const allUsers  = await User.find({ isActive: true }).select("_id").lean();
     const recipients = allUsers.map((u) => u._id);
 
     await createNotification({
       recipients,
-      title: title || "New Announcement",
-      message: content.slice(0, 160),
-      type: "announcement",
+      title:      title || "New Announcement",
+      message:    content.slice(0, 160),
+      type:       "announcement",
       entityType: "announcement",
-      entityId: announcement._id,
+      entityId:   announcement._id,
       redirectUrl: "/announcements",
-      createdBy: user._id
+      createdBy:  author._id
     });
+
+    // ── LinkedIn company-page post (birthday only, fire-and-forget) ──────────
+    if (source === "birthday" && generatedLocalPath) {
+      const commentary =
+        `🎂 Happy Birthday, ${user.name}!\n\n` +
+        `Wishing ${user.name}` +
+        (user.role ? `, our ${user.role},` : "") +
+        ` a joyful and memorable birthday filled with happiness and success!\n\n` +
+        `#HappyBirthday #TeamCelebration #HikeHealthGS`;
+
+      postBirthdayToLinkedIn({
+        name:           user.name,
+        role:           user.role || "",
+        commentary,
+        localImagePath: generatedLocalPath,
+      }).catch((err) => console.error("[LinkedIn] fire-and-forget error:", err.message));
+    }
 
     return announcement;
   } catch (error) {
-    if (error?.code === 11000) {
-      return null;
-    }
+    if (error?.code === 11000) return null;
     throw error;
   }
 };
 
 export const runCelebrationAnnouncementsForDate = async (onDate = new Date()) => {
   const date = new Date(onDate);
-  const templates = await getTemplates();
 
+  // Load templates and the system/company author in parallel
+  const [templates, systemUser] = await Promise.all([getTemplates(), getSystemUser()]);
+
+  // Include `role` so the birthday card generator and LinkedIn caption can use it
   const users = await User.find({ isActive: true, $or: [{ dateOfBirth: { $ne: null } }, { joiningDate: { $ne: null } }] })
-    .select("_id name dateOfBirth joiningDate profilePhotoUrl")
+    .select("_id name role dateOfBirth joiningDate profilePhotoUrl")
     .lean();
 
-  let birthdaysPosted = 0;
+  let birthdaysPosted    = 0;
   let anniversariesPosted = 0;
 
   for (const user of users) {
     if (user.dateOfBirth && sameMonthDay(new Date(user.dateOfBirth), date)) {
       const created = await createCelebrationAnnouncement({
-        source: "birthday",
+        source:   "birthday",
         user,
         template: templates.birthday,
-        onDate: date
+        onDate:   date,
+        systemUser
       });
       if (created) birthdaysPosted += 1;
     }
@@ -141,10 +206,11 @@ export const runCelebrationAnnouncementsForDate = async (onDate = new Date()) =>
       const completedYears = yearsSince(new Date(user.joiningDate), date);
       if (completedYears >= 1) {
         const created = await createCelebrationAnnouncement({
-          source: "work_anniversary",
+          source:   "work_anniversary",
           user,
           template: templates.anniversary,
-          onDate: date
+          onDate:   date,
+          systemUser
         });
         if (created) anniversariesPosted += 1;
       }

@@ -2,6 +2,9 @@ import { Router } from "express";
 import Joi from "joi";
 import {
   getCelebrationTemplates,
+  getLinkedInStatus,
+  manualPost,
+  previewCard,
   triggerCelebrations,
   updateCelebrationTemplates
 } from "../controllers/celebrationController.js";
@@ -19,6 +22,8 @@ const templateSectionSchema = Joi.object({
 });
 
 router.get("/templates", protect, authorize(...ADMIN_ROLES), getCelebrationTemplates);
+router.get("/linkedin-status", protect, authorize(...ADMIN_ROLES), getLinkedInStatus);
+router.get("/preview-card/:userId", protect, authorize(...ADMIN_ROLES), previewCard);
 router.post(
   "/templates",
   protect,
@@ -44,6 +49,19 @@ router.post(
     })
   ),
   triggerCelebrations
+);
+
+router.post(
+  "/manual-post",
+  protect,
+  authorize(...ADMIN_ROLES),
+  validate(
+    Joi.object({
+      userId: Joi.string().required(),
+      type:   Joi.string().valid("birthday", "anniversary").default("birthday")
+    })
+  ),
+  manualPost
 );
 
 export default router;

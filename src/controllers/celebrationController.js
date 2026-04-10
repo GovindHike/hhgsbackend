@@ -1,5 +1,12 @@
+import path from "path";
 import { StatusCodes } from "http-status-codes";
+import { env } from "../config/env.js";
+import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
+import { User } from "../models/User.js";
+import { generateBirthdayCard } from "../services/birthdayCardService.js";
+import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
+import { createNotification } from "../services/notificationService.js";
 import { runCelebrationAnnouncementsForDate } from "../jobs/celebrationJob.js";
 
 const CELEBRATION_KEY = "celebration_templates";
@@ -37,6 +44,19 @@ const mergeWithDefaults = (value = {}) => ({
   birthday: { ...DEFAULT_CONFIG.birthday, ...(value.birthday || {}) },
   anniversary: { ...DEFAULT_CONFIG.anniversary, ...(value.anniversary || {}) }
 });
+
+const renderTpl = (template, values) =>
+  String(template || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) =>
+    values[k] != null ? String(values[k]) : ""
+  );
+
+const getSystemAuthor = async () => {
+  try {
+    return await User.findOne({ email: env.systemAuthorEmail }).select("_id").lean();
+  } catch {
+    return null;
+  }
+};
 
 export const getCelebrationTemplates = async (_req, res) => {
   const setting = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
@@ -77,5 +97,140 @@ export const triggerCelebrations = async (req, res) => {
   return res.status(StatusCodes.OK).json({
     message: "Celebration announcements processed",
     ...result
+  });
+};
+
+export const getLinkedInStatus = (_req, res) => {
+  res.status(StatusCodes.OK).json({
+    enabled:    env.linkedInEnabled,
+    configured: Boolean(env.linkedInAccessToken && env.linkedInOrgUrn),
+    orgUrn:     env.linkedInOrgUrn ? `${env.linkedInOrgUrn.slice(0, 32)}…` : "",
+    apiVersion: env.linkedInApiVersion
+  });
+};
+
+/**
+ * Generate a birthday card for a specific user and return its public URL.
+ * The admin uses this to preview the exact image before posting.
+ */
+export const previewCard = async (req, res) => {
+  const { userId } = req.params;
+
+  const user = await User.findById(userId).select("name role profilePhotoUrl").lean();
+  if (!user) {
+    return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
+  }
+
+  const card = await generateBirthdayCard({
+    name:            user.name,
+    role:            user.role || "",
+    profilePhotoUrl: user.profilePhotoUrl || "",
+    outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+    baseUrl:         env.backendUrl
+  });
+
+  if (!card) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: "Card generation failed" });
+  }
+
+  return res.status(StatusCodes.OK).json({
+    url:             card.url,
+    name:            user.name,
+    role:            user.role || "",
+    profilePhotoUrl: user.profilePhotoUrl || ""
+  });
+};
+
+/**
+ * Manually create and publish a birthday (or anniversary) announcement for a
+ * specific employee — sends in-app notifications and fires LinkedIn if active.
+ */
+export const manualPost = async (req, res) => {
+  const { userId, type = "birthday" } = req.body;
+  const source = type === "anniversary" ? "work_anniversary" : "birthday";
+
+  const user = await User.findById(userId).select("_id name role profilePhotoUrl").lean();
+  if (!user) {
+    return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
+  }
+
+  const setting   = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
+  const templates = mergeWithDefaults(setting?.templates || {});
+  const template  = templates[type] || templates.birthday;
+
+  const values = {
+    name:  user.name,
+    quote: template.defaultQuote || "",
+    years: "",
+    photo: user.profilePhotoUrl || ""
+  };
+
+  const title   = renderTpl(template.titleTemplate,   values).trim();
+  const content = renderTpl(template.contentTemplate, values).trim();
+
+  if (!content) {
+    return res.status(StatusCodes.BAD_REQUEST).json({ message: "Template content is empty — please save a content template first." });
+  }
+
+  let media              = [];
+  let generatedLocalPath = null;
+
+  if (source === "birthday") {
+    const card = await generateBirthdayCard({
+      name:            user.name,
+      role:            user.role || "",
+      profilePhotoUrl: user.profilePhotoUrl || "",
+      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      baseUrl:         env.backendUrl
+    });
+    if (card) {
+      media              = [{ type: "image", url: card.url }];
+      generatedLocalPath = card.localPath;
+    }
+  } else {
+    const imageUrl = renderTpl(template.imageTemplate, values).trim();
+    if (imageUrl && !imageUrl.includes("{{")) {
+      media = [{ type: "image", url: imageUrl }];
+    }
+  }
+
+  const systemUser = await getSystemAuthor();
+  const author     = systemUser || user;
+
+  const announcement = await Announcement.create({
+    title,
+    content,
+    media,
+    createdBy: author._id
+  });
+
+  const allUsers = await User.find({ isActive: true }).select("_id").lean();
+  await createNotification({
+    recipients:  allUsers.map((u) => u._id),
+    title:       title || "New Announcement",
+    message:     content.slice(0, 160),
+    type:        "announcement",
+    entityType:  "announcement",
+    entityId:    announcement._id,
+    redirectUrl: "/announcements",
+    createdBy:   author._id
+  });
+
+  if (source === "birthday" && generatedLocalPath) {
+    const commentary =
+      `🎂 Happy Birthday, ${user.name}!\n\n` +
+      `Wishing ${user.name}${user.role ? `, our ${user.role},` : ""} a joyful birthday!\n\n` +
+      `#HappyBirthday #TeamCelebration #HikeHealthGS`;
+    postBirthdayToLinkedIn({
+      name:           user.name,
+      role:           user.role || "",
+      commentary,
+      localImagePath: generatedLocalPath
+    }).catch((err) => console.error("[LinkedIn] fire-and-forget error:", err.message));
+  }
+
+  return res.status(StatusCodes.CREATED).json({
+    message:      "Posted successfully",
+    announcement: { _id: announcement._id, title: announcement.title }
   });
 };

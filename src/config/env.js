@@ -33,5 +33,18 @@ export const env = {
   autoCheckoutEveningCron: process.env.AUTO_CHECKOUT_EVENING_CRON || "30 19 * * *",
   autoCheckoutNightCron: process.env.AUTO_CHECKOUT_NIGHT_CRON || "0 3 * * *",
   dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *",
-  celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *"
+  celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *",
+  // ── Backend self-reference (used by cron jobs that build absolute URLs) ──
+  backendUrl: process.env.BACKEND_URL || `http://localhost:${Number(process.env.PORT || 5000)}`,
+  // ── System / company author for auto-generated announcements ─────────────
+  systemAuthorEmail: process.env.SYSTEM_AUTHOR_EMAIL || "admin@office.local",
+  // ── LinkedIn company-page integration ─────────────────────────────────────
+  // Set LINKEDIN_ENABLED=true to activate posting.
+  // LINKEDIN_ACCESS_TOKEN  : OAuth2 bearer token (w_organization_social scope)
+  // LINKEDIN_ORG_URN       : e.g. "urn:li:organization:123456789"
+  // LINKEDIN_API_VERSION   : LinkedIn Marketing API version (YYYYMM format)
+  linkedInEnabled:      process.env.LINKEDIN_ENABLED === "true",
+  linkedInAccessToken:  process.env.LINKEDIN_ACCESS_TOKEN || "",
+  linkedInOrgUrn:       process.env.LINKEDIN_ORG_URN || "",
+  linkedInApiVersion:   process.env.LINKEDIN_API_VERSION || "202504"
 };
