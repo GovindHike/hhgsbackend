@@ -124,12 +124,9 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
 
   sessions.forEach((session) => {
     if (session.checkIn && session.checkOut) {
-      let sessionMs = new Date(session.checkOut) - new Date(session.checkIn);
-      const lunchMs = (session.lunchMinutes || 0) * 60 * 1000;
-      const permissionsMs = (session.permissionMinutes || 0) * 60 * 1000;
+      const sessionMs = new Date(session.checkOut) - new Date(session.checkIn);
       totalLunchMinutes += session.lunchMinutes || 0;
       totalPermissionMinutes += session.permissionMinutes || 0;
-      sessionMs = Math.max(0, sessionMs - lunchMs - permissionsMs);
       totalMilliseconds += sessionMs;
     }
 
@@ -137,12 +134,6 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
       missedCheckoutCount += 1;
     }
   });
-
-  const policyLunchMinutes = shiftSnapshot?.autoDeductLunchMinutes || 0;
-  if (policyLunchMinutes > 0) {
-    totalMilliseconds = Math.max(0, totalMilliseconds - policyLunchMinutes * 60 * 1000);
-    totalLunchMinutes += policyLunchMinutes;
-  }
 
   const totalHours = Number((totalMilliseconds / (1000 * 60 * 60)).toFixed(2));
   const expectedHours = Number(shiftSnapshot?.expectedHours || 0);

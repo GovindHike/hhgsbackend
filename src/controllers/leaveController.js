@@ -126,6 +126,23 @@ export const createLeave = async (req, res) => {
     });
   }
 
+  if (ADMIN_ROLES.includes(req.user.role)) {
+    const otherAdmins = await User.find({ role: { $in: ADMIN_ROLES }, _id: { $ne: req.user._id } }).select("_id").lean();
+    if (otherAdmins.length) {
+      await createNotification({
+        recipients: otherAdmins.map((user) => user._id),
+        title: "Admin leave request",
+        message: `${requester.name} submitted a ${req.body.leaveType.toLowerCase()} leave request.`,
+        type: "leave_requested",
+        entityType: "Leave",
+        entityId: leave._id,
+        referenceId: leave._id,
+        redirectUrl: "/leaves",
+        createdBy: req.user._id
+      });
+    }
+  }
+
   res.status(StatusCodes.CREATED).json({ leave });
 };
 
@@ -344,12 +361,12 @@ export const cancelLeave = async (req, res) => {
     throw new AppError("Leave request not found", StatusCodes.NOT_FOUND);
   }
 
-  if (EMPLOYEE_ROLES.includes(req.user.role) || TEAM_LEAD_ROLES.includes(req.user.role)) {
+  if (EMPLOYEE_ROLES.includes(req.user.role) || TEAM_LEAD_ROLES.includes(req.user.role) || ADMIN_ROLES.includes(req.user.role)) {
     if (String(leave.user._id) !== String(req.user._id)) {
       throw new AppError("You can only cancel your own leave request", StatusCodes.FORBIDDEN);
     }
   } else {
-    throw new AppError("Only employees or team leads can cancel their own leave requests", StatusCodes.FORBIDDEN);
+    throw new AppError("Only employees, team leads, or admins can cancel their own leave requests", StatusCodes.FORBIDDEN);
   }
 
   if (leave.status === "Cancelled") {

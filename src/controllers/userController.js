@@ -176,3 +176,11 @@ export const deleteUser = async (req, res) => {
 
   res.status(StatusCodes.OK).json({ message: "User deleted successfully" });
 };
+
+export const uploadUserPhoto = async (req, res) => {
+  if (!req.file) {
+    throw new AppError("No file uploaded", StatusCodes.BAD_REQUEST);
+  }
+  const url = `${req.protocol}://${req.get("host")}/uploads/profiles/${req.file.filename}`;
+  res.status(StatusCodes.CREATED).json({ url });
+};

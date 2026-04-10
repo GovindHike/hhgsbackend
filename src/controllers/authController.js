@@ -11,7 +11,8 @@ const buildAuthResponse = (user) => {
     role: user.role,
     email: user.email,
     name: user.name,
-    team: user.team || null
+    team: user.team || null,
+    profilePhotoUrl: user.profilePhotoUrl || ""
   };
 
   return {
@@ -49,6 +50,15 @@ export const changePassword = async (req, res) => {
   await user.save();
 
   res.status(StatusCodes.OK).json(buildAuthResponse(user));
+};
+
+export const uploadProfilePhoto = async (req, res) => {
+  if (!req.file) {
+    throw new AppError("No file uploaded", StatusCodes.BAD_REQUEST);
+  }
+  const url = `${req.protocol}://${req.get("host")}/uploads/profiles/${req.file.filename}`;
+  await User.findByIdAndUpdate(req.user._id, { profilePhotoUrl: url });
+  res.status(StatusCodes.OK).json({ url });
 };
 
 export const resetPassword = async (req, res) => {

@@ -25,7 +25,7 @@ export const userValidators = {
     employeeCode: Joi.string().allow("", null),
     dateOfBirth: Joi.date().allow(null, ""),
     joiningDate: Joi.date().allow(null, ""),
-    profilePhotoUrl: Joi.string().uri().allow("", null),
+    profilePhotoUrl: Joi.string().allow("", null),
     team: Joi.string().allow(null, ""),
     shift: Joi.string().valid(...SHIFT_TYPES).default("Shift 1")
   }),
@@ -36,7 +36,7 @@ export const userValidators = {
     employeeCode: Joi.string().allow("", null),
     dateOfBirth: Joi.date().allow(null, ""),
     joiningDate: Joi.date().allow(null, ""),
-    profilePhotoUrl: Joi.string().uri().allow("", null),
+    profilePhotoUrl: Joi.string().allow("", null),
     team: Joi.string().allow(null, ""),
     shift: Joi.string().valid(...SHIFT_TYPES),
     isActive: Joi.boolean()

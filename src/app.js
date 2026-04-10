@@ -74,9 +74,14 @@ export const createApp = () => {
 
   const uploadsDir = path.join(process.cwd(), "uploads");
   const announcementsDir = path.join(uploadsDir, "announcements");
+  const profilesDir = path.join(uploadsDir, "profiles");
 
   if (!fs.existsSync(announcementsDir)) {
     fs.mkdirSync(announcementsDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(profilesDir)) {
+    fs.mkdirSync(profilesDir, { recursive: true });
   }
 
   app.use("/uploads", express.static(uploadsDir));

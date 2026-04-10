@@ -12,7 +12,7 @@ router.get("/balance", getLeaveBalance);
 router.get("/", getLeaves);
 router.post("/", authorize(...ALL_ROLES), validate(leaveValidators.create), createLeave);
 router.patch("/:id/decision", authorize(...ADMIN_ROLES, ...TEAM_LEAD_ROLES), validate(leaveValidators.decide), decideLeave);
-router.patch("/:id/cancel", authorize(...TEAM_LEAD_ROLES, ...EMPLOYEE_ROLES), cancelLeave);
+router.patch("/:id/cancel", authorize(...ADMIN_ROLES, ...TEAM_LEAD_ROLES, ...EMPLOYEE_ROLES), cancelLeave);
 router.delete("/:id", authorize(...ALL_ROLES), deleteLeave);
 
 export default router;
