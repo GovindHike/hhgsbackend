@@ -4,7 +4,7 @@ import { env } from "../config/env.js";
 import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
-import { generateBirthdayCard } from "../services/birthdayCardService.js";
+import { generateBirthdayCard, generateAnniversaryCard } from "../services/birthdayCardService.js";
 import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
 import { createNotification } from "../services/notificationService.js";
 import { runCelebrationAnnouncementsForDate } from "../jobs/celebrationJob.js";
@@ -57,6 +57,8 @@ const getSystemAuthor = async () => {
     return null;
   }
 };
+
+const getRequestBaseUrl = (req) => `${req.protocol}://${req.get("host")}`;
 
 export const getCelebrationTemplates = async (_req, res) => {
   const setting = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
@@ -115,19 +117,37 @@ export const getLinkedInStatus = (_req, res) => {
  */
 export const previewCard = async (req, res) => {
   const { userId } = req.params;
+  const type       = String(req.query.type || "birthday");
 
-  const user = await User.findById(userId).select("name role profilePhotoUrl").lean();
+  const user = await User.findById(userId).select("name role profilePhotoUrl joiningDate").lean();
   if (!user) {
     return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
   }
 
-  const card = await generateBirthdayCard({
-    name:            user.name,
-    role:            user.role || "",
-    profilePhotoUrl: user.profilePhotoUrl || "",
-    outputDir:       path.join(process.cwd(), "uploads", "announcements"),
-    baseUrl:         env.backendUrl
-  });
+  let card;
+
+  if (type === "anniversary") {
+    if (!user.joiningDate) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Selected user has no joining date" });
+    }
+
+    card = await generateAnniversaryCard({
+      name:            user.name,
+      role:            user.role || "",
+      profilePhotoUrl: user.profilePhotoUrl || "",
+      joiningDate:     user.joiningDate,
+      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      baseUrl:         getRequestBaseUrl(req)
+    });
+  } else {
+    card = await generateBirthdayCard({
+      name:            user.name,
+      role:            user.role || "",
+      profilePhotoUrl: user.profilePhotoUrl || "",
+      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      baseUrl:         getRequestBaseUrl(req)
+    });
+  }
 
   if (!card) {
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: "Card generation failed" });
@@ -137,7 +157,8 @@ export const previewCard = async (req, res) => {
     url:             card.url,
     name:            user.name,
     role:            user.role || "",
-    profilePhotoUrl: user.profilePhotoUrl || ""
+    profilePhotoUrl: user.profilePhotoUrl || "",
+    type
   });
 };
 
@@ -149,7 +170,7 @@ export const manualPost = async (req, res) => {
   const { userId, type = "birthday" } = req.body;
   const source = type === "anniversary" ? "work_anniversary" : "birthday";
 
-  const user = await User.findById(userId).select("_id name role profilePhotoUrl").lean();
+  const user = await User.findById(userId).select("_id name role profilePhotoUrl joiningDate").lean();
   if (!user) {
     return res.status(StatusCodes.NOT_FOUND).json({ message: "User not found" });
   }
@@ -175,22 +196,36 @@ export const manualPost = async (req, res) => {
   let media              = [];
   let generatedLocalPath = null;
 
-  if (source === "birthday") {
-    const card = await generateBirthdayCard({
-      name:            user.name,
-      role:            user.role || "",
-      profilePhotoUrl: user.profilePhotoUrl || "",
-      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
-      baseUrl:         env.backendUrl
-    });
+  const baseUrl = getRequestBaseUrl(req);
+
+  if (source === "birthday" || source === "work_anniversary") {
+    const card = source === "birthday"
+      ? await generateBirthdayCard({
+          name:            user.name,
+          role:            user.role || "",
+          profilePhotoUrl: user.profilePhotoUrl || "",
+          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          baseUrl:         baseUrl
+        })
+      : user.joiningDate
+        ? await generateAnniversaryCard({
+            name:            user.name,
+            role:            user.role || "",
+            profilePhotoUrl: user.profilePhotoUrl || "",
+            joiningDate:     user.joiningDate,
+            outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+            baseUrl:         baseUrl
+          })
+        : null;
+
     if (card) {
       media              = [{ type: "image", url: card.url }];
       generatedLocalPath = card.localPath;
-    }
-  } else {
-    const imageUrl = renderTpl(template.imageTemplate, values).trim();
-    if (imageUrl && !imageUrl.includes("{{")) {
-      media = [{ type: "image", url: imageUrl }];
+    } else if (type === "anniversary") {
+      const imageUrl = renderTpl(template.imageTemplate, values).trim();
+      if (imageUrl && !imageUrl.includes("{{")) {
+        media = [{ type: "image", url: imageUrl }];
+      }
     }
   }
 

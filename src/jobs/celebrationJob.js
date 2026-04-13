@@ -5,7 +5,7 @@ import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
 import { createNotification } from "../services/notificationService.js";
-import { generateBirthdayCard } from "../services/birthdayCardService.js";
+import { generateBirthdayCard, generateAnniversaryCard } from "../services/birthdayCardService.js";
 import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
 
 const CELEBRATION_KEY = "celebration_templates";
@@ -95,14 +95,23 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
   let media              = [];
   let generatedLocalPath = null;
 
-  if (source === "birthday") {
-    const card = await generateBirthdayCard({
-      name:            user.name,
-      role:            user.role || "",
-      profilePhotoUrl: user.profilePhotoUrl || "",
-      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
-      baseUrl:         env.backendUrl,
-    });
+  if (source === "birthday" || source === "work_anniversary") {
+    const card = source === "birthday"
+      ? await generateBirthdayCard({
+          name:            user.name,
+          role:            user.role || "",
+          profilePhotoUrl: user.profilePhotoUrl || "",
+          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          baseUrl:         env.backendUrl,
+        })
+      : await generateAnniversaryCard({
+          name:            user.name,
+          role:            user.role || "",
+          profilePhotoUrl: user.profilePhotoUrl || "",
+          joiningDate:     user.joiningDate,
+          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          baseUrl:         env.backendUrl,
+        });
 
     if (card) {
       media              = [{ type: "image", url: card.url }];
@@ -110,8 +119,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
     }
   }
 
-  // For anniversaries (or if birthday card generation fails) fall back to the
-  // configured imageTemplate field.
+  // For anniversaries, if card generation fails fall back to the configured imageTemplate.
   if (!media.length) {
     const imageUrl = render(template.imageTemplate, values).trim();
     if (imageUrl && !imageUrl.includes("{{")) {
