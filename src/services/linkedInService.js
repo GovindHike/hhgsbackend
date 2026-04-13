@@ -3,15 +3,19 @@ import fs from "fs";
 import { env } from "../config/env.js";
 
 const LI_HOST = "api.linkedin.com";
+const LI_OAUTH_HOST = "www.linkedin.com";
+
+let cachedAccessToken = null;
+let cachedAccessTokenExpiresAt = 0;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
 /** Headers common to every LinkedIn REST request. */
-function baseHeaders() {
+function baseHeaders(accessToken) {
   return {
-    Authorization: `Bearer ${env.linkedInAccessToken}`,
+    Authorization: `Bearer ${accessToken}`,
     "LinkedIn-Version": env.linkedInApiVersion,
     "X-Restli-Protocol-Version": "2.0.0",
   };
@@ -41,6 +45,99 @@ function httpsRequest(options, body) {
   });
 }
 
+function nowMs() {
+  return Date.now();
+}
+
+function canUseCachedToken() {
+  return Boolean(cachedAccessToken) && nowMs() < cachedAccessTokenExpiresAt;
+}
+
+function parseJsonBody(responseBody) {
+  try {
+    return JSON.parse(responseBody || "{}");
+  } catch {
+    return null;
+  }
+}
+
+function buildTokenRequestBody() {
+  const params = new URLSearchParams();
+  params.set("grant_type", "refresh_token");
+  params.set("refresh_token", env.linkedInRefreshToken);
+  params.set("client_id", env.linkedInClientId);
+  params.set("client_secret", env.linkedInClientSecret);
+  return params.toString();
+}
+
+async function getLinkedInAccessToken() {
+  if (canUseCachedToken()) {
+    return cachedAccessToken;
+  }
+
+  if (env.linkedInAccessToken) {
+    // Static access token fallback for environments without refresh-token flow.
+    return env.linkedInAccessToken;
+  }
+
+  if (!env.linkedInClientId || !env.linkedInClientSecret || !env.linkedInRefreshToken) {
+    console.warn(
+      "[LinkedIn] Missing auth config. Set LINKEDIN_ACCESS_TOKEN or LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET + LINKEDIN_REFRESH_TOKEN"
+    );
+    return null;
+  }
+
+  const requestBody = buildTokenRequestBody();
+  const tokenRes = await httpsRequest(
+    {
+      hostname: LI_OAUTH_HOST,
+      path: "/oauth/v2/accessToken",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(requestBody),
+      },
+    },
+    requestBody
+  );
+
+  if (tokenRes.status !== 200) {
+    console.error("[LinkedIn] OAuth token request failed:", tokenRes.status, tokenRes.body);
+    return null;
+  }
+
+  const tokenPayload = parseJsonBody(tokenRes.body);
+  const accessToken = tokenPayload?.access_token;
+  const expiresInSec = Number(tokenPayload?.expires_in || 0);
+
+  if (!accessToken) {
+    console.error("[LinkedIn] OAuth response missing access_token");
+    return null;
+  }
+
+  cachedAccessToken = accessToken;
+  // Refresh 60 seconds early to avoid edge expiration while uploading.
+  cachedAccessTokenExpiresAt = nowMs() + Math.max(expiresInSec - 60, 30) * 1000;
+  return cachedAccessToken;
+}
+
+function getLinkedInAuthorUrn() {
+  const authorUrn = env.linkedInMemberUrn || env.linkedInOrgUrn || "";
+  if (!authorUrn) return "";
+
+  const isMemberUrn = /^urn:li:person:[A-Za-z0-9_-]+$/.test(authorUrn);
+  const isOrgUrn = /^urn:li:organization:\d+$/.test(authorUrn);
+
+  if (!isMemberUrn && !isOrgUrn) {
+    console.warn(
+      "[LinkedIn] Invalid author URN. Expected urn:li:person:<id> or urn:li:organization:<id>"
+    );
+    return "";
+  }
+
+  return authorUrn;
+}
+
 // ---------------------------------------------------------------------------
 // Image upload
 // ---------------------------------------------------------------------------
@@ -58,12 +155,12 @@ function httpsRequest(options, body) {
  *   LINKEDIN_ACCESS_TOKEN  – OAuth2 bearer token with w_organization_social scope
  *   LINKEDIN_ORG_URN       – e.g. "urn:li:organization:123456789"
  */
-async function uploadImageToLinkedIn(localImagePath) {
+async function uploadImageToLinkedIn(localImagePath, ownerUrn, accessToken) {
   const imageBuffer = fs.readFileSync(localImagePath);
 
   // ── Step 1: Initialise the upload ────────────────────────────────────────
   const initBody = JSON.stringify({
-    initializeUploadRequest: { owner: env.linkedInOrgUrn },
+    initializeUploadRequest: { owner: ownerUrn },
   });
 
   const initRes = await httpsRequest(
@@ -72,7 +169,7 @@ async function uploadImageToLinkedIn(localImagePath) {
       path:     "/rest/images?action=initializeUpload",
       method:   "POST",
       headers: {
-        ...baseHeaders(),
+        ...baseHeaders(accessToken),
         "Content-Type":   "application/json",
         "Content-Length": Buffer.byteLength(initBody),
       },
@@ -114,7 +211,7 @@ async function uploadImageToLinkedIn(localImagePath) {
           path:     parsedUrl.pathname + parsedUrl.search,
           method:   "PUT",
           headers: {
-            Authorization:         `Bearer ${env.linkedInAccessToken}`,
+            Authorization:         `Bearer ${accessToken}`,
             "LinkedIn-Version":    env.linkedInApiVersion,
             "Content-Type":        "application/octet-stream",
             "Content-Length":      chunk.length,
@@ -144,17 +241,19 @@ async function uploadImageToLinkedIn(localImagePath) {
 // ---------------------------------------------------------------------------
 
 /**
- * Post a personalised birthday card with caption to the company LinkedIn page.
+ * Post a personalised birthday card with caption to LinkedIn.
  *
  * This function is intentionally non-blocking — the caller should NOT await it.
  * Any error is caught internally so it can never crash the in-app birthday flow.
  *
- * LinkedIn requirements:
- *   • A LinkedIn developer app with Community Management API access approved.
- *   • An OAuth2 access token (w_organization_social scope) for a member who
- *     has an ADMINISTRATOR company-page role.
- *   • LINKEDIN_ORG_URN set to your company's organization URN
- *     (e.g. "urn:li:organization:123456789").
+ * LinkedIn requirements (profile posting):
+ *   • A LinkedIn developer app with Share on LinkedIn / Community Management access.
+ *   • Member scope like w_member_social.
+ *   • LINKEDIN_MEMBER_URN set (e.g. "urn:li:person:xxxxxxxx").
+ *
+ * Also supported:
+ *   • Organization posting with LINKEDIN_ORG_URN and organization scope.
+ *   • Auth via either LINKEDIN_ACCESS_TOKEN or client credentials + refresh token.
  *
  * @param {object} p
  * @param {string} p.name            Employee full name
@@ -165,19 +264,23 @@ async function uploadImageToLinkedIn(localImagePath) {
 export async function postBirthdayToLinkedIn({ name, role, commentary, localImagePath }) {
   if (!env.linkedInEnabled) return;
 
-  if (!env.linkedInAccessToken || !env.linkedInOrgUrn) {
-    console.warn("[LinkedIn] Skipping: LINKEDIN_ACCESS_TOKEN or LINKEDIN_ORG_URN not set");
+  const authorUrn = getLinkedInAuthorUrn();
+  if (!authorUrn) {
+    console.warn("[LinkedIn] Skipping: set LINKEDIN_MEMBER_URN (profile) or LINKEDIN_ORG_URN (page)");
     return;
   }
 
   try {
+    const accessToken = await getLinkedInAccessToken();
+    if (!accessToken) return;
+
     // 1 – Upload the birthday card image
-    const imageUrn = await uploadImageToLinkedIn(localImagePath);
+    const imageUrn = await uploadImageToLinkedIn(localImagePath, authorUrn, accessToken);
     if (!imageUrn) return;
 
-    // 2 – Create the company-page post
+    // 2 – Create the post
     const postBody = JSON.stringify({
-      author:       env.linkedInOrgUrn,
+      author:       authorUrn,
       commentary,
       visibility:   "PUBLIC",
       distribution: {
@@ -201,7 +304,7 @@ export async function postBirthdayToLinkedIn({ name, role, commentary, localImag
         path:     "/rest/posts",
         method:   "POST",
         headers: {
-          ...baseHeaders(),
+          ...baseHeaders(accessToken),
           "Content-Type":   "application/json",
           "Content-Length": Buffer.byteLength(postBody),
         },

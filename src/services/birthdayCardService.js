@@ -31,9 +31,14 @@ const ANNIVERSARY_TEMPLATE_PATH = path.join(__dirname, "..", "Work Anniversary.p
 //    y baseline ≈ 79.0 % of image height → 853 px
 //
 const LAYOUT = {
-  photo: { cxRatio: 0.58, cyRatio: 0.319, rRatio: 0.171 },
-  name:  { yRatio: 0.765 },
-  role:  { yRatio: 0.815 },
+  photo: {
+    cxRatio: 0.5,
+    cyRatio: 0.343,
+    outerRadiusRatio: 0.163,
+    insetRatio: 0.012,
+  },
+  name:  { yRatio: 0.769 },
+  role:  { yRatio: 0.819 },
 };
 
 const ANNIVERSARY_LAYOUT = {
@@ -85,6 +90,8 @@ const roundedRectMaskSvg = (width, height, radius) =>
   );
 
 const compactText = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+const toTemplateName = (value) => compactText(value).toLocaleUpperCase();
 
 const getFittedFontSize = ({ text, maxWidth, maxFontSize, minFontSize, widthFactor }) => {
   const safeText = compactText(text);
@@ -161,7 +168,7 @@ const buildAnniversaryQuoteLines = (role, years) => {
 
 const buildAnniversaryTextOverlaySvg = ({ width, height, name, role, years, ordinalText }) => {
   const cx = Math.round(width * ANNIVERSARY_LAYOUT.band.centerXRatio);
-  const trimmedName = compactText(name);
+  const trimmedName = toTemplateName(name);
   const trimmedRole = compactText(role);
   const quoteLines = buildAnniversaryQuoteLines(role, years);
 
@@ -346,20 +353,31 @@ const xmlEsc = (s) =>
  * (regular, brand-green) centred on the image.
  */
 function buildTextOverlaySvg({ width, height, name, role, nameY, roleY }) {
-  const nameFontSize = Math.round(width * 0.044); // ≈ 47 px on 1080 canvas
+  const trimmedName = toTemplateName(name);
+  const trimmedRole = compactText(role);
+  const maxNameWidth = Math.round(width * 0.72);
+  const birthdayFontFamily = "'Jost', Arial, Helvetica, sans-serif";
+  const birthdayTextColor = "#246C51";
+  const nameFontSize = getFittedFontSize({
+    text: trimmedName,
+    maxWidth: maxNameWidth,
+    maxFontSize: Math.round(width * 0.044),
+    minFontSize: Math.round(width * 0.026),
+    widthFactor: 0.66,
+  });
   const roleFontSize = Math.round(width * 0.032); // ≈ 34 px
   const cx = width / 2;
 
   return Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
     `<text x="${cx}" y="${nameY}" ` +
-      `font-family="Arial, Helvetica, DejaVu Sans, sans-serif" ` +
-      `font-size="${nameFontSize}" font-weight="bold" ` +
-      `fill="#1a1a1a" text-anchor="middle">${xmlEsc(name)}</text>` +
+      `font-family="${birthdayFontFamily}" ` +
+      `font-size="${nameFontSize}" font-weight="700" ` +
+      `fill="${birthdayTextColor}" text-anchor="middle">${xmlEsc(trimmedName)}</text>` +
     `<text x="${cx}" y="${roleY}" ` +
-      `font-family="Arial, Helvetica, DejaVu Sans, sans-serif" ` +
+      `font-family="${birthdayFontFamily}" ` +
       `font-size="${roleFontSize}" font-weight="normal" ` +
-      `fill="#1a5c31" text-anchor="middle">${xmlEsc(role)}</text>` +
+      `fill="${birthdayTextColor}" text-anchor="middle">${xmlEsc(trimmedRole)}</text>` +
     `</svg>`
   );
 }
@@ -395,9 +413,11 @@ export async function generateBirthdayCard({ name, role, profilePhotoUrl, output
     const { width: W, height: H } = await sharp(templateBuffer).metadata();
 
     // Compute pixel positions from layout ratios
-    const photoCX   = Math.round(W * LAYOUT.photo.cxRatio);
-    const photoCY   = Math.round(H * LAYOUT.photo.cyRatio);
-    const photoR    = Math.round(W * LAYOUT.photo.rRatio);
+    const photoCX = Math.round(W * LAYOUT.photo.cxRatio);
+    const photoCY = Math.round(H * LAYOUT.photo.cyRatio);
+    const outerPhotoRadius = Math.round(W * LAYOUT.photo.outerRadiusRatio);
+    const inset = Math.round(W * LAYOUT.photo.insetRatio);
+    const photoR = Math.max(outerPhotoRadius - inset, 1);
     const photoDiam = photoR * 2;
     const nameY     = Math.round(H * LAYOUT.name.yRatio);
     const roleY     = Math.round(H * LAYOUT.role.yRatio);

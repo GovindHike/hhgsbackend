@@ -103,10 +103,20 @@ export const triggerCelebrations = async (req, res) => {
 };
 
 export const getLinkedInStatus = (_req, res) => {
+  const authorUrn = env.linkedInMemberUrn || env.linkedInOrgUrn || "";
+  const hasStaticToken = Boolean(env.linkedInAccessToken);
+  const hasRefreshFlow = Boolean(env.linkedInClientId && env.linkedInClientSecret && env.linkedInRefreshToken);
+  const isValidMemberUrn = /^urn:li:person:[A-Za-z0-9_-]+$/.test(authorUrn);
+  const isValidOrgUrn = /^urn:li:organization:\d+$/.test(authorUrn);
+  const hasValidAuthorUrn = isValidMemberUrn || isValidOrgUrn;
+
   res.status(StatusCodes.OK).json({
-    enabled:    env.linkedInEnabled,
-    configured: Boolean(env.linkedInAccessToken && env.linkedInOrgUrn),
-    orgUrn:     env.linkedInOrgUrn ? `${env.linkedInOrgUrn.slice(0, 32)}…` : "",
+    enabled: env.linkedInEnabled,
+    configured: hasValidAuthorUrn && (hasStaticToken || hasRefreshFlow),
+    authorUrn: authorUrn ? `${authorUrn.slice(0, 36)}…` : "",
+    hasStaticToken,
+    hasRefreshFlow,
+    hasValidAuthorUrn,
     apiVersion: env.linkedInApiVersion
   });
 };

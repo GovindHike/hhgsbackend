@@ -160,7 +160,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
       createdBy:  author._id
     });
 
-    // ── LinkedIn company-page post (birthday only, fire-and-forget) ──────────
+    // ── LinkedIn post (birthday only, fire-and-forget) ───────────────────────
     if (source === "birthday" && generatedLocalPath) {
       const commentary =
         `🎂 Happy Birthday, ${user.name}!\n\n` +

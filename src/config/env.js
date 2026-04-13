@@ -40,11 +40,19 @@ export const env = {
   systemAuthorEmail: process.env.SYSTEM_AUTHOR_EMAIL || "admin@office.local",
   // ── LinkedIn company-page integration ─────────────────────────────────────
   // Set LINKEDIN_ENABLED=true to activate posting.
-  // LINKEDIN_ACCESS_TOKEN  : OAuth2 bearer token (w_organization_social scope)
-  // LINKEDIN_ORG_URN       : e.g. "urn:li:organization:123456789"
+  // Auth options:
+  // 1) LINKEDIN_ACCESS_TOKEN directly, or
+  // 2) LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET + LINKEDIN_REFRESH_TOKEN.
+  // Posting target:
+  // - LINKEDIN_MEMBER_URN  : e.g. "urn:li:person:xxxxxxxx" (profile)
+  // - LINKEDIN_ORG_URN     : e.g. "urn:li:organization:123456789" (page)
   // LINKEDIN_API_VERSION   : LinkedIn Marketing API version (YYYYMM format)
   linkedInEnabled:      process.env.LINKEDIN_ENABLED === "true",
   linkedInAccessToken:  process.env.LINKEDIN_ACCESS_TOKEN || "",
+  linkedInClientId:     process.env.LINKEDIN_CLIENT_ID || "",
+  linkedInClientSecret: process.env.LINKEDIN_CLIENT_SECRET || "",
+  linkedInRefreshToken: process.env.LINKEDIN_REFRESH_TOKEN || "",
+  linkedInMemberUrn:    process.env.LINKEDIN_MEMBER_URN || "",
   linkedInOrgUrn:       process.env.LINKEDIN_ORG_URN || "",
   linkedInApiVersion:   process.env.LINKEDIN_API_VERSION || "202504"
 };
