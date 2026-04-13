@@ -10,7 +10,7 @@ const leaveSchema = new mongoose.Schema(
     leaveType: { type: String, enum: ["Full Day", "Half Day"], required: true, default: "Full Day" },
     requestedType: { type: String, enum: ["PLANNED", "SICK"], required: true },
     finalType: { type: String, enum: ["PLANNED", "SICK", null], default: null },
-    validationStatus: { type: String, enum: ["PENDING", "APPROVED", "REJECTED"], default: "PENDING", index: true },
+    validationStatus: { type: String, enum: ["PENDING", "APPROVED", "REJECTED", "CANCELLED"], default: "PENDING", index: true },
     doctorProof: { type: String, default: null },
     adminOverride: { type: Boolean, default: false },
     reason: { type: String, required: true, trim: true },

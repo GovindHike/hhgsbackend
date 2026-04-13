@@ -27,7 +27,7 @@ export const isTeamLeadRole = (role = "") => TEAM_LEAD_ROLES.includes(role);
 export const isEmployeeRole = (role = "") => EMPLOYEE_ROLES.includes(role);
 
 export const TASK_STATUSES = ["Pending", "In Progress", "Completed"];
-export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected"];
+export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected", "Cancelled"];
 export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Retired"];
 
 export const SHIFT_TYPES = ["Shift 1", "Shift 2"];

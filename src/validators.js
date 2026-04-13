@@ -207,6 +207,11 @@ export const leaveValidators = {
   }),
   decide: Joi.object({
     action: Joi.string().valid("approve", "approve_sick", "convert_planned", "reject").required(),
-    finalType: Joi.string().valid("PLANNED", "SICK").allow(null)
+    finalType: Joi.string().valid("PLANNED", "SICK").allow(null),
+    reason: Joi.when("action", {
+      is: "reject",
+      then: Joi.string().trim().required(),
+      otherwise: Joi.string().trim().allow("", null)
+    })
   })
 };
