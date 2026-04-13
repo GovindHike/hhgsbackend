@@ -56,6 +56,8 @@ const shiftPolicyValidator = Joi.object({
   name: Joi.string().trim().required(),
   startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
   endTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
+  lunchBreakStart: Joi.string().pattern(/^\d{2}:\d{2}$/).allow(null, ""),
+  lunchBreakEnd: Joi.string().pattern(/^\d{2}:\d{2}$/).allow(null, ""),
   variants: Joi.array().items(scheduleVariantValidator).default([])
 });
 

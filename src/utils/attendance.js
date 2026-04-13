@@ -16,12 +16,16 @@ export const DEFAULT_ATTENDANCE_POLICY = {
       name: "Shift 1",
       startTime: "09:30",
       endTime: "19:30",
+      lunchBreakStart: "13:30",
+      lunchBreakEnd: "16:00",
       variants: []
     },
     shift2: {
       name: "Shift 2",
       startTime: "13:00",
       endTime: "23:00",
+      lunchBreakStart: "19:00",
+      lunchBreakEnd: "23:00",
       variants: [
         {
           label: "US Daylight Saving",
@@ -63,11 +67,15 @@ export const normalizeAttendancePolicy = (policy = {}) => ({
     shift1: {
       ...DEFAULT_ATTENDANCE_POLICY.shifts.shift1,
       ...(policy.shifts?.shift1 || {}),
+      lunchBreakStart: policy.shifts?.shift1?.lunchBreakStart || DEFAULT_ATTENDANCE_POLICY.shifts.shift1.lunchBreakStart,
+      lunchBreakEnd: policy.shifts?.shift1?.lunchBreakEnd || DEFAULT_ATTENDANCE_POLICY.shifts.shift1.lunchBreakEnd,
       variants: normalizeVariants(policy.shifts?.shift1?.variants || DEFAULT_ATTENDANCE_POLICY.shifts.shift1.variants)
     },
     shift2: {
       ...DEFAULT_ATTENDANCE_POLICY.shifts.shift2,
       ...(policy.shifts?.shift2 || {}),
+      lunchBreakStart: policy.shifts?.shift2?.lunchBreakStart || DEFAULT_ATTENDANCE_POLICY.shifts.shift2.lunchBreakStart,
+      lunchBreakEnd: policy.shifts?.shift2?.lunchBreakEnd || DEFAULT_ATTENDANCE_POLICY.shifts.shift2.lunchBreakEnd,
       variants: normalizeVariants(policy.shifts?.shift2?.variants || DEFAULT_ATTENDANCE_POLICY.shifts.shift2.variants)
     }
   }
@@ -97,7 +105,9 @@ export const resolveShiftSnapshot = ({ shift = "Shift 1", dateKey, policy = DEFA
     reminderDelayMinutes: normalizedPolicy.reminderDelayMinutes,
     autoCheckoutDelayMinutes: normalizedPolicy.autoCheckoutDelayMinutes,
     lunchIncludedInShift: normalizedPolicy.lunchIncludedInShift,
-    autoDeductLunchMinutes: normalizedPolicy.autoDeductLunchMinutes
+    autoDeductLunchMinutes: normalizedPolicy.autoDeductLunchMinutes,
+    lunchBreakStart: shiftPolicy.lunchBreakStart || null,
+    lunchBreakEnd: shiftPolicy.lunchBreakEnd || null
   };
 };
 
@@ -127,7 +137,9 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
       const sessionMs = new Date(session.checkOut) - new Date(session.checkIn);
       totalLunchMinutes += session.lunchMinutes || 0;
       totalPermissionMinutes += session.permissionMinutes || 0;
-      totalMilliseconds += sessionMs;
+      if (!session.isSystemLunchBreak) {
+        totalMilliseconds += sessionMs;
+      }
     }
 
     if (session.autoCheckoutApplied) {
@@ -147,6 +159,113 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
     varianceHours: Number((totalHours - expectedHours).toFixed(2)),
     missedCheckoutCount
   };
+};
+
+const parseDateTime = (dateKey, timeValue) => {
+  if (!dateKey || !timeValue) return null;
+  const parsed = dayjs(`${dateKey} ${timeValue}`);
+  return parsed.isValid() ? parsed : null;
+};
+
+const hasLunchGapBetweenSessions = (sessions, lunchStart, lunchEnd) => {
+  for (let index = 0; index < sessions.length - 1; index += 1) {
+    const current = sessions[index];
+    const next = sessions[index + 1];
+    if (!current?.checkOut || !next?.checkIn || current?.isSystemLunchBreak || next?.isSystemLunchBreak) {
+      continue;
+    }
+
+    const gapStart = dayjs(current.checkOut);
+    const gapEnd = dayjs(next.checkIn);
+    if (!gapStart.isValid() || !gapEnd.isValid() || !gapEnd.isAfter(gapStart)) {
+      continue;
+    }
+
+    const overlapsLunchWindow = gapStart.isBefore(lunchEnd) && gapEnd.isAfter(lunchStart);
+    if (!overlapsLunchWindow) {
+      continue;
+    }
+
+    current.reason = "Lunch";
+    current.lunchMinutes = Math.max(Number(current.lunchMinutes || 0), 60);
+    current.permissionMinutes = 0;
+    return true;
+  }
+
+  return false;
+};
+
+const workedThroughLunchWindow = (sessions, lunchStart, lunchEnd) =>
+  sessions.some((session) => {
+    if (!session?.checkIn || !session?.checkOut || session?.isSystemLunchBreak) {
+      return false;
+    }
+
+    const checkIn = dayjs(session.checkIn);
+    const checkOut = dayjs(session.checkOut);
+    if (!checkIn.isValid() || !checkOut.isValid() || !checkOut.isAfter(checkIn)) {
+      return false;
+    }
+
+    return checkIn.isBefore(lunchEnd) && checkOut.isAfter(lunchStart);
+  });
+
+export const applyLunchBreakPolicy = (attendance, referenceMoment = dayjs()) => {
+  const lunchStart = parseDateTime(attendance?.date, attendance?.shiftSnapshot?.lunchBreakStart);
+  const lunchEnd = parseDateTime(attendance?.date, attendance?.shiftSnapshot?.lunchBreakEnd);
+  if (!lunchStart || !lunchEnd || !lunchEnd.isAfter(lunchStart)) {
+    return false;
+  }
+
+  const sessions = attendance?.sessions || [];
+  if (!sessions.length) {
+    return false;
+  }
+
+  sessions.sort((left, right) => dayjs(left.checkIn).valueOf() - dayjs(right.checkIn).valueOf());
+
+  const alreadyTaggedLunch = sessions.some((session) => session?.isSystemLunchBreak || Number(session?.lunchMinutes || 0) >= 60 || session?.reason === "Lunch");
+  if (alreadyTaggedLunch) {
+    return false;
+  }
+
+  const detectedLunchGap = hasLunchGapBetweenSessions(sessions, lunchStart, lunchEnd);
+  if (detectedLunchGap) {
+    return true;
+  }
+
+  if (!referenceMoment || !dayjs(referenceMoment).isAfter(lunchEnd)) {
+    return false;
+  }
+
+  const hasOpenSession = Boolean(sessions.at(-1) && !sessions.at(-1).checkOut);
+  if (hasOpenSession) {
+    return false;
+  }
+
+  if (!workedThroughLunchWindow(sessions, lunchStart, lunchEnd)) {
+    return false;
+  }
+
+  const candidateLunchEnd = lunchStart.add(60, "minute");
+  const autoLunchEnd = candidateLunchEnd.isAfter(lunchEnd) ? lunchEnd : candidateLunchEnd;
+  sessions.push({
+    checkIn: lunchStart.toDate(),
+    checkOut: autoLunchEnd.toDate(),
+    reason: "Lunch",
+    reasonNote: "Auto-created lunch break as per shift lunch policy",
+    lunchMinutes: 60,
+    permissionMinutes: 0,
+    autoCheckoutApplied: false,
+    autoCheckedOutAt: null,
+    reminderSentAt: null,
+    lunchReminderSentAt: null,
+    isSystemLunchBreak: true,
+    shiftSnapshot: attendance.shiftSnapshot || null
+  });
+
+  sessions.sort((left, right) => dayjs(left.checkIn).valueOf() - dayjs(right.checkIn).valueOf());
+  return true;
 };
 
 export const getSummaryRange = ({ period = "week", referenceDate } = {}) => {

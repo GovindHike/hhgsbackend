@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import dayjs from "dayjs";
 import { Attendance } from "../models/Attendance.js";
-import { buildAttendanceSummary, computeAttendanceSummary, getSummaryRange, normalizeAttendancePolicy, resolveShiftSnapshot, DEFAULT_ATTENDANCE_POLICY } from "../utils/attendance.js";
+import { applyLunchBreakPolicy, buildAttendanceSummary, computeAttendanceSummary, getSummaryRange, normalizeAttendancePolicy, resolveShiftSnapshot, DEFAULT_ATTENDANCE_POLICY } from "../utils/attendance.js";
 import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES, ADMIN_ROLES } from "../utils/constants.js";
 import { User } from "../models/User.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
@@ -55,6 +55,7 @@ const getUserShift = async (req) => {
 };
 
 const applyAttendanceSummary = (attendance) => {
+  applyLunchBreakPolicy(attendance, dayjs());
   const summary = computeAttendanceSummary(attendance.sessions, attendance.shiftSnapshot);
   attendance.totalHours = summary.totalHours;
   attendance.totalLunchMinutes = summary.totalLunchMinutes;
@@ -214,6 +215,19 @@ export const notifyMissedCheckoutReminder = async (userId, attendanceId, shiftEn
     title: "Checkout reminder",
     message: `You are still checked in after your shift ended at ${shiftEndTime}. Please check out to keep attendance accurate.`,
     type: "attendance_checkout_reminder",
+    entityType: "Attendance",
+    entityId: attendanceId,
+    referenceId: attendanceId,
+    redirectUrl: "/attendance"
+  });
+};
+
+export const notifyLunchCheckoutReminder = async (userId, attendanceId, lunchWindowLabel) => {
+  await createNotification({
+    recipients: [userId],
+    title: "Lunch reminder",
+    message: `Lunch window ${lunchWindowLabel} is active. Please check out with reason \"Lunch\" and check in again after lunch.`,
+    type: "attendance_lunch_checkout_reminder",
     entityType: "Attendance",
     entityId: attendanceId,
     referenceId: attendanceId,

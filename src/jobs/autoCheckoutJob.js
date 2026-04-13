@@ -4,8 +4,8 @@ import { env } from "../config/env.js";
 import { Attendance } from "../models/Attendance.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
-import { computeAttendanceSummary, DEFAULT_ATTENDANCE_POLICY, getShiftWindow, normalizeAttendancePolicy, resolveShiftSnapshot } from "../utils/attendance.js";
-import { notifyAutoCheckout, notifyMissedCheckoutReminder } from "../controllers/attendanceController.js";
+import { applyLunchBreakPolicy, computeAttendanceSummary, DEFAULT_ATTENDANCE_POLICY, getShiftWindow, normalizeAttendancePolicy, resolveShiftSnapshot } from "../utils/attendance.js";
+import { notifyAutoCheckout, notifyLunchCheckoutReminder, notifyMissedCheckoutReminder } from "../controllers/attendanceController.js";
 
 const ATTENDANCE_POLICY_KEY = "attendance_policy";
 
@@ -58,6 +58,28 @@ export const startAutoCheckoutJob = () => {
           const { shiftEnd, reminderAt, autoCheckoutAt } = getShiftWindow(record.date, shiftSnapshot);
           const now = dayjs();
 
+          const lunchBreakStart = shiftSnapshot?.lunchBreakStart ? dayjs(`${record.date} ${shiftSnapshot.lunchBreakStart}`) : null;
+          const lunchBreakEnd = shiftSnapshot?.lunchBreakEnd ? dayjs(`${record.date} ${shiftSnapshot.lunchBreakEnd}`) : null;
+
+          if (
+            lunchBreakStart &&
+            lunchBreakEnd &&
+            lunchBreakStart.isValid() &&
+            lunchBreakEnd.isValid() &&
+            !lastSession.lunchReminderSentAt &&
+            now.isAfter(lunchBreakStart) &&
+            now.isBefore(lunchBreakEnd)
+          ) {
+            lastSession.lunchReminderSentAt = now.toDate();
+            await record.save();
+            await notifyLunchCheckoutReminder(
+              record.user,
+              record._id,
+              `${lunchBreakStart.format("hh:mm A")} - ${lunchBreakEnd.format("hh:mm A")}`
+            );
+            return;
+          }
+
           if (!lastSession.reminderSentAt && now.isAfter(reminderAt) && now.isBefore(autoCheckoutAt)) {
             lastSession.reminderSentAt = now.toDate();
             await record.save();
@@ -69,6 +91,7 @@ export const startAutoCheckoutJob = () => {
             lastSession.checkOut = shiftEnd.toDate();
             lastSession.autoCheckoutApplied = true;
             lastSession.autoCheckedOutAt = now.toDate();
+            applyLunchBreakPolicy(record, now);
             const summary = computeAttendanceSummary(record.sessions, record.shiftSnapshot || shiftSnapshot);
             record.totalHours = summary.totalHours;
             record.totalLunchMinutes = summary.totalLunchMinutes;
