@@ -41,7 +41,7 @@ const announcementWriteRateLimiter = createAnnouncementRateLimiter(
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(process.cwd(), "uploads", "announcements"));
+    cb(null, path.join(env.uploadsDir, "announcements"));
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);

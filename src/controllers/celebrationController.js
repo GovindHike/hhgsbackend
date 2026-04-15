@@ -146,7 +146,7 @@ export const previewCard = async (req, res) => {
       role:            user.role || "",
       profilePhotoUrl: user.profilePhotoUrl || "",
       joiningDate:     user.joiningDate,
-      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      outputDir:       path.join(env.uploadsDir, "announcements"),
       baseUrl:         getRequestBaseUrl(req)
     });
   } else {
@@ -154,7 +154,7 @@ export const previewCard = async (req, res) => {
       name:            user.name,
       role:            user.role || "",
       profilePhotoUrl: user.profilePhotoUrl || "",
-      outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+      outputDir:       path.join(env.uploadsDir, "announcements"),
       baseUrl:         getRequestBaseUrl(req)
     });
   }
@@ -214,7 +214,7 @@ export const manualPost = async (req, res) => {
           name:            user.name,
           role:            user.role || "",
           profilePhotoUrl: user.profilePhotoUrl || "",
-          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          outputDir:       path.join(env.uploadsDir, "announcements"),
           baseUrl:         baseUrl
         })
       : user.joiningDate
@@ -223,7 +223,7 @@ export const manualPost = async (req, res) => {
             role:            user.role || "",
             profilePhotoUrl: user.profilePhotoUrl || "",
             joiningDate:     user.joiningDate,
-            outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+            outputDir:       path.join(env.uploadsDir, "announcements"),
             baseUrl:         baseUrl
           })
         : null;

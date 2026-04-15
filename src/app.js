@@ -72,7 +72,7 @@ export const createApp = () => {
     })
   );
 
-  const uploadsDir = path.join(process.cwd(), "uploads");
+  const uploadsDir = env.uploadsDir;
   const announcementsDir = path.join(uploadsDir, "announcements");
   const profilesDir = path.join(uploadsDir, "profiles");
 

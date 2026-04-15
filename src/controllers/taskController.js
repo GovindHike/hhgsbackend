@@ -9,8 +9,13 @@ import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
 import { createNotification } from "../services/notificationService.js";
 
 const getLeadTeamMemberIds = async (user) => {
-  const team = await Team.findOne({ lead: user._id }).select("members");
-  return team?.members?.map((memberId) => String(memberId)) || [String(user._id)];
+  const team = await Team.findOne({ lead: user._id }).select("lead members");
+  const ids = new Set([String(user._id)]);
+
+  if (team?.lead) ids.add(String(team.lead));
+  (team?.members || []).forEach((memberId) => ids.add(String(memberId)));
+
+  return Array.from(ids);
 };
 
 const getScopedTaskFilter = async (req) => {

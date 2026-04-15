@@ -6,12 +6,13 @@ import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { userValidators } from "../validators.js";
 import { ADMIN_ROLES } from "../utils/constants.js";
+import { env } from "../config/env.js";
 
 const router = Router();
 
 const profileStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, path.join(process.cwd(), "uploads", "profiles"));
+    cb(null, path.join(env.uploadsDir, "profiles"));
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname);

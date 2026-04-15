@@ -1,19 +1,12 @@
 import { StatusCodes } from "http-status-codes";
 import { User } from "../models/User.js";
-import { signAccessToken, generateTemporaryPassword } from "../utils/token.js";
+import { createAuthPayload, signAccessToken, generateTemporaryPassword } from "../utils/token.js";
 import { AppError } from "../utils/AppError.js";
 import { forgotPasswordTemplate } from "../utils/emailTemplates.js";
 import { sendEmail } from "../services/emailService.js";
 
 const buildAuthResponse = (user) => {
-  const payload = {
-    id: user._id,
-    role: user.role,
-    email: user.email,
-    name: user.name,
-    team: user.team || null,
-    profilePhotoUrl: user.profilePhotoUrl || ""
-  };
+  const payload = createAuthPayload(user);
 
   return {
     token: signAccessToken(payload),

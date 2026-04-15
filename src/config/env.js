@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import path from "path";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ export const env = {
   smtpSocketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
   smtpOperationTimeoutMs: Number(process.env.SMTP_OPERATION_TIMEOUT_MS || 15000),
   mailFrom: process.env.MAIL_FROM || "Office Management <no-reply@example.com>",
+  uploadsDir: process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads"),
   autoCheckoutCron: process.env.AUTO_CHECKOUT_CRON || "*/10 * * * *",
   autoCheckoutEveningCron: process.env.AUTO_CHECKOUT_EVENING_CRON || "30 19 * * *",
   autoCheckoutNightCron: process.env.AUTO_CHECKOUT_NIGHT_CRON || "0 3 * * *",

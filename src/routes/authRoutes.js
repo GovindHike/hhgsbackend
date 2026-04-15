@@ -30,7 +30,7 @@ const authRateLimiter = rateLimit({
 
 const profileStorage = multer.diskStorage({
 	destination: (_req, _file, cb) => {
-		cb(null, path.join(process.cwd(), "uploads", "profiles"));
+		cb(null, path.join(env.uploadsDir, "profiles"));
 	},
 	filename: (_req, file, cb) => {
 		const ext = path.extname(file.originalname);

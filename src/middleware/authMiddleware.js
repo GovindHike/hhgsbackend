@@ -1,10 +1,21 @@
 import { StatusCodes } from "http-status-codes";
 import { User } from "../models/User.js";
-import { verifyAccessToken } from "../utils/token.js";
+import { createAuthPayload, signAccessToken, validateSessionToken } from "../utils/token.js";
 import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES } from "../utils/constants.js";
 import { AppError } from "../utils/AppError.js";
 
-export const protect = async (req, _res, next) => {
+const exposeResponseHeader = (res, headerName) => {
+  const existing = String(res.getHeader("Access-Control-Expose-Headers") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!existing.includes(headerName)) {
+    res.setHeader("Access-Control-Expose-Headers", [...existing, headerName].join(", "));
+  }
+};
+
+export const protect = async (req, res, next) => {
   const token = req.headers.authorization?.startsWith("Bearer ")
     ? req.headers.authorization.split(" ")[1]
     : null;
@@ -13,11 +24,24 @@ export const protect = async (req, _res, next) => {
     return next(new AppError("Authentication required", StatusCodes.UNAUTHORIZED));
   }
 
-  const decoded = verifyAccessToken(token);
+  let decoded;
+  let shouldRenew;
+
+  try {
+    ({ decoded, shouldRenew } = validateSessionToken(token));
+  } catch (_error) {
+    return next(new AppError("Invalid session token", StatusCodes.UNAUTHORIZED));
+  }
+
   const user = await User.findById(decoded.id).select("-password");
 
   if (!user || !user.isActive) {
     return next(new AppError("User is no longer active", StatusCodes.UNAUTHORIZED));
+  }
+
+  if (shouldRenew) {
+    exposeResponseHeader(res, "x-access-token");
+    res.setHeader("x-access-token", signAccessToken(createAuthPayload(user)));
   }
 
   req.user = user;

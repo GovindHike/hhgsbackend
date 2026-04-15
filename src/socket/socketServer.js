@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { User } from "../models/User.js";
-import { verifyAccessToken } from "../utils/token.js";
+import { createAuthPayload, signAccessToken, validateSessionToken } from "../utils/token.js";
 
 let io;
 const userSockets = new Map();
@@ -48,8 +48,8 @@ export const initSocketServer = (httpServer, clientUrl) => {
         return next(new Error("Authentication required"));
       }
 
-      const decoded = verifyAccessToken(token);
-      const user = await User.findById(decoded.id).select("_id name role isActive");
+      const { decoded, shouldRenew } = validateSessionToken(token);
+      const user = await User.findById(decoded.id).select("_id name role email team profilePhotoUrl isActive");
       if (!user || !user.isActive) {
         return next(new Error("Unauthorized"));
       }
@@ -57,7 +57,8 @@ export const initSocketServer = (httpServer, clientUrl) => {
       socket.user = {
         id: String(user._id),
         name: user.name,
-        role: user.role
+        role: user.role,
+        renewedToken: shouldRenew ? signAccessToken(createAuthPayload(user)) : null
       };
 
       return next();
@@ -70,6 +71,10 @@ export const initSocketServer = (httpServer, clientUrl) => {
     const userId = socket.user.id;
     addSocketForUser(userId, socket.id);
     socket.join(`user:${userId}`);
+
+    if (socket.user.renewedToken) {
+      socket.emit("auth:refresh", { token: socket.user.renewedToken });
+    }
 
     socket.on("disconnect", () => {
       removeSocketForUser(userId, socket.id);
@@ -91,6 +96,10 @@ export const sendNotification = (userIds = [], payload) => {
     io.to(`user:${userId}`).emit(payload.type, payload);
     io.to(`user:${userId}`).emit("notification:new", payload);
   });
+
+  if (typeof payload?.type === "string" && payload.type.startsWith("attendance_")) {
+    io.emit("attendance_updated", payload);
+  }
 };
 
 export const getConnectedUsers = () =>

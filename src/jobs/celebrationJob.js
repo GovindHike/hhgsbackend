@@ -101,7 +101,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
           name:            user.name,
           role:            user.role || "",
           profilePhotoUrl: user.profilePhotoUrl || "",
-          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          outputDir:       path.join(env.uploadsDir, "announcements"),
           baseUrl:         env.backendUrl,
         })
       : await generateAnniversaryCard({
@@ -109,7 +109,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
           role:            user.role || "",
           profilePhotoUrl: user.profilePhotoUrl || "",
           joiningDate:     user.joiningDate,
-          outputDir:       path.join(process.cwd(), "uploads", "announcements"),
+          outputDir:       path.join(env.uploadsDir, "announcements"),
           baseUrl:         env.backendUrl,
         });
 
