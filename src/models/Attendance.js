@@ -11,7 +11,7 @@ const shiftSnapshotSchema = new mongoose.Schema(
     lunchBreakEnd: { type: String, default: null },
     expectedHours: { type: Number, default: 8 },
     reminderDelayMinutes: { type: Number, default: 30 },
-    autoCheckoutDelayMinutes: { type: Number, default: 120 },
+    autoCheckoutDelayMinutes: { type: Number, default: 180 },
     lunchIncludedInShift: { type: Boolean, default: true },
     autoDeductLunchMinutes: { type: Number, default: 0 }
   },

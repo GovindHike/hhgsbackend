@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import dayjs from "dayjs";
 import { Attendance } from "../models/Attendance.js";
-import { applyLunchBreakPolicy, buildAttendanceSummary, computeAttendanceSummary, getSummaryRange, normalizeAttendancePolicy, resolveShiftSnapshot, DEFAULT_ATTENDANCE_POLICY } from "../utils/attendance.js";
+import { applyLunchBreakPolicy, buildAttendanceSummary, computeAttendanceSummary, getShiftWindow, getSummaryRange, normalizeAttendancePolicy, resolveShiftSnapshot, DEFAULT_ATTENDANCE_POLICY } from "../utils/attendance.js";
 import { TEAM_LEAD_ROLES, EMPLOYEE_ROLES, ADMIN_ROLES } from "../utils/constants.js";
 import { User } from "../models/User.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
@@ -105,6 +105,51 @@ const applySessionCheckout = (session, { checkoutAt, reason, reasonNote }) => {
   session.permissionMinutes = normalizedReason === "Permission" ? 60 : 0;
   session.autoCheckoutApplied = false;
   session.autoCheckedOutAt = null;
+};
+
+const autoCheckoutOverdueSession = async (attendance, fallbackShift, referenceMoment = dayjs()) => {
+  const lastSession = attendance?.sessions?.at(-1);
+  if (!lastSession || lastSession.checkOut) {
+    return attendance;
+  }
+
+  const shiftSnapshot = await resolveAttendanceShiftSnapshot(attendance, fallbackShift);
+  if (!lastSession.shiftSnapshot) {
+    lastSession.shiftSnapshot = shiftSnapshot;
+  }
+
+  const { shiftEnd, autoCheckoutAt } = getShiftWindow(attendance.date, shiftSnapshot);
+  const now = dayjs(referenceMoment);
+
+  if (!shiftEnd.isValid() || !autoCheckoutAt.isValid() || !now.isAfter(autoCheckoutAt)) {
+    return attendance;
+  }
+
+  const normalizedReason = normalizeCheckoutReason(lastSession.reason);
+  lastSession.checkOut = shiftEnd.toDate();
+  lastSession.reason = normalizedReason;
+  lastSession.reasonNote = lastSession.reasonNote?.trim?.() || "";
+  lastSession.lunchMinutes = normalizedReason === "Lunch" ? 60 : 0;
+  lastSession.permissionMinutes = normalizedReason === "Permission" ? 60 : 0;
+  lastSession.autoCheckoutApplied = true;
+  lastSession.autoCheckedOutAt = now.toDate();
+
+  applyAttendanceSummary(attendance);
+  await attendance.save();
+
+  const notificationRecipient = attendance.user?._id || attendance.user;
+  await notifyAutoCheckout(notificationRecipient, attendance._id, shiftEnd.format("hh:mm A"));
+
+  return attendance;
+};
+
+const prepareAttendanceForResponse = async (attendance, fallbackShift) => {
+  if (!attendance) return null;
+
+  await autoCheckoutOverdueSession(attendance, fallbackShift);
+
+  const plainAttendance = typeof attendance.toObject === "function" ? attendance.toObject() : attendance;
+  return hydrateAttendanceSummary(plainAttendance);
 };
 
 export const checkIn = async (req, res) => {
@@ -331,7 +376,7 @@ export const getAttendance = async (req, res) => {
   }
 
   const { page, limit, skip } = parsePagination(req.query);
-  const [records, total] = await Promise.all([
+  const [attendanceItems, total] = await Promise.all([
     Attendance.find(filter)
       .populate({
         path: "user",
@@ -340,11 +385,11 @@ export const getAttendance = async (req, res) => {
       })
       .sort({ date: -1, createdAt: -1 })
       .skip(skip)
-      .limit(limit)
-      .lean()
-      .then((items) => items.map((item) => hydrateAttendanceSummary(item))),
+      .limit(limit),
     Attendance.countDocuments(filter)
   ]);
+
+  const records = await Promise.all(attendanceItems.map((item) => prepareAttendanceForResponse(item, item.user?.shift)));
 
   res.status(StatusCodes.OK).json({ records, ...buildPaginatedResponse({ items: records, total, page, limit }) });
 };
@@ -353,7 +398,7 @@ export const getMyTodayAttendance = async (req, res) => {
   const attendance = await Attendance.findOne({ user: req.user._id, date: todayKey() });
   const policy = await getAttendancePolicy();
   const shift = await getUserShift(req);
-  const hydratedAttendance = attendance ? hydrateAttendanceSummary(attendance.toObject()) : null;
+  const hydratedAttendance = attendance ? await prepareAttendanceForResponse(attendance, shift) : null;
   const shiftSnapshot = hydratedAttendance?.shiftSnapshot || resolveShiftSnapshot({ shift, dateKey: todayKey(), policy });
   res.status(StatusCodes.OK).json({ attendance: hydratedAttendance, shiftSnapshot, attendancePolicy: policy });
 };
@@ -392,15 +437,15 @@ export const getAttendanceSummary = async (req, res) => {
     $lte: range.end.format("YYYY-MM-DD")
   };
 
-  const records = await Attendance.find(filter)
+  const attendanceItems = await Attendance.find(filter)
     .populate({
       path: "user",
       select: "name email team shift",
       populate: { path: "team", select: "name" }
     })
-    .sort({ date: 1 })
-    .lean()
-    .then((items) => items.map((item) => hydrateAttendanceSummary(item)));
+    .sort({ date: 1 });
+
+  const records = await Promise.all(attendanceItems.map((item) => prepareAttendanceForResponse(item, item.user?.shift)));
 
   const summary = buildAttendanceSummary(records, { period, referenceDate: getReferenceDate(req.query) });
 

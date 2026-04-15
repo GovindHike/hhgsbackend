@@ -3,10 +3,12 @@ import isoWeek from "dayjs/plugin/isoWeek.js";
 
 dayjs.extend(isoWeek);
 
+export const MIN_AUTO_CHECKOUT_DELAY_MINUTES = 180;
+
 export const DEFAULT_ATTENDANCE_POLICY = {
   dailyTargetHours: 9,
   reminderDelayMinutes: 30,
-  autoCheckoutDelayMinutes: 120,
+  autoCheckoutDelayMinutes: MIN_AUTO_CHECKOUT_DELAY_MINUTES,
   lunchIncludedInShift: true,
   autoDeductLunchMinutes: 0,
   workWeekDays: [1, 2, 3, 4, 5],
@@ -53,7 +55,10 @@ const normalizeVariants = (variants = []) =>
 export const normalizeAttendancePolicy = (policy = {}) => ({
   dailyTargetHours: Number(policy.dailyTargetHours ?? DEFAULT_ATTENDANCE_POLICY.dailyTargetHours),
   reminderDelayMinutes: Number(policy.reminderDelayMinutes ?? DEFAULT_ATTENDANCE_POLICY.reminderDelayMinutes),
-  autoCheckoutDelayMinutes: Number(policy.autoCheckoutDelayMinutes ?? DEFAULT_ATTENDANCE_POLICY.autoCheckoutDelayMinutes),
+  autoCheckoutDelayMinutes: Math.max(
+    MIN_AUTO_CHECKOUT_DELAY_MINUTES,
+    Number(policy.autoCheckoutDelayMinutes ?? DEFAULT_ATTENDANCE_POLICY.autoCheckoutDelayMinutes)
+  ),
   lunchIncludedInShift: Boolean(policy.lunchIncludedInShift ?? DEFAULT_ATTENDANCE_POLICY.lunchIncludedInShift),
   autoDeductLunchMinutes: Number(policy.autoDeductLunchMinutes ?? DEFAULT_ATTENDANCE_POLICY.autoDeductLunchMinutes),
   workWeekDays: Array.isArray(policy.workWeekDays) && policy.workWeekDays.length ? policy.workWeekDays : DEFAULT_ATTENDANCE_POLICY.workWeekDays,
@@ -118,11 +123,17 @@ export const getShiftWindow = (dateKey, shiftSnapshot) => {
     shiftEnd = shiftEnd.add(1, "day");
   }
 
+  const reminderDelayMinutes = Number(shiftSnapshot?.reminderDelayMinutes || 0);
+  const autoCheckoutDelayMinutes = Math.max(
+    MIN_AUTO_CHECKOUT_DELAY_MINUTES,
+    Number(shiftSnapshot?.autoCheckoutDelayMinutes ?? DEFAULT_ATTENDANCE_POLICY.autoCheckoutDelayMinutes)
+  );
+
   return {
     shiftStart,
     shiftEnd,
-    reminderAt: shiftEnd.add(shiftSnapshot.reminderDelayMinutes || 0, "minute"),
-    autoCheckoutAt: shiftEnd.add(shiftSnapshot.autoCheckoutDelayMinutes || 0, "minute")
+    reminderAt: shiftEnd.add(reminderDelayMinutes, "minute"),
+    autoCheckoutAt: shiftEnd.add(autoCheckoutDelayMinutes, "minute")
   };
 };
 

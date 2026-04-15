@@ -65,7 +65,7 @@ export const settingValidators = {
   updateAttendancePolicy: Joi.object({
     dailyTargetHours: Joi.number().min(1).max(24).required(),
     reminderDelayMinutes: Joi.number().integer().min(0).max(720).required(),
-    autoCheckoutDelayMinutes: Joi.number().integer().min(1).max(1440).required(),
+    autoCheckoutDelayMinutes: Joi.number().integer().min(180).max(1440).required(),
     lunchIncludedInShift: Joi.boolean().required(),
     autoDeductLunchMinutes: Joi.number().integer().min(0).max(180).required(),
     workWeekDays: Joi.array().items(Joi.number().integer().min(1).max(7)).default([1, 2, 3, 4, 5]),

@@ -26,7 +26,7 @@ const attendancePolicySchema = new mongoose.Schema(
   {
     dailyTargetHours: { type: Number, default: 9 },
     reminderDelayMinutes: { type: Number, default: 30 },
-    autoCheckoutDelayMinutes: { type: Number, default: 120 },
+    autoCheckoutDelayMinutes: { type: Number, default: 180 },
     lunchIncludedInShift: { type: Boolean, default: true },
     autoDeductLunchMinutes: { type: Number, default: 0 },
     workWeekDays: { type: [Number], default: [1, 2, 3, 4, 5] },
