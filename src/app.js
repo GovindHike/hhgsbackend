@@ -75,6 +75,7 @@ export const createApp = () => {
   const uploadsDir = env.uploadsDir;
   const announcementsDir = path.join(uploadsDir, "announcements");
   const profilesDir = path.join(uploadsDir, "profiles");
+  const mobileDir = path.join(uploadsDir, "mobile");
 
   if (!fs.existsSync(announcementsDir)) {
     fs.mkdirSync(announcementsDir, { recursive: true });
@@ -82,6 +83,10 @@ export const createApp = () => {
 
   if (!fs.existsSync(profilesDir)) {
     fs.mkdirSync(profilesDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(mobileDir)) {
+    fs.mkdirSync(mobileDir, { recursive: true });
   }
 
   app.use("/uploads", express.static(uploadsDir));
