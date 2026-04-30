@@ -3,6 +3,8 @@ import Joi from "joi";
 import {
   getCelebrationTemplates,
   getLinkedInStatus,
+  previewCard,
+  manualPost,
   triggerCelebrations,
   updateCelebrationTemplates
 } from "../controllers/celebrationController.js";
@@ -34,6 +36,31 @@ router.post(
     })
   ),
   updateCelebrationTemplates
+);
+
+router.get(
+  "/preview-card/:userId",
+  protect,
+  authorize(...ADMIN_ROLES),
+  validate(
+    Joi.object({
+      type: Joi.string().valid("birthday", "anniversary").optional()
+    }).unknown(true)
+  ),
+  previewCard
+);
+
+router.post(
+  "/manual-post",
+  protect,
+  authorize(...ADMIN_ROLES),
+  validate(
+    Joi.object({
+      userId: Joi.string().required(),
+      type: Joi.string().valid("birthday", "anniversary").default("birthday")
+    })
+  ),
+  manualPost
 );
 
 router.post(
