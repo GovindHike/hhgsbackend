@@ -12,6 +12,8 @@ const userSchema = new mongoose.Schema(
     dateOfBirth: { type: Date, default: null },
     joiningDate: { type: Date, default: null },
     profilePhotoUrl: { type: String, trim: true, default: "" },
+    profilePhotoData: { type: Buffer, select: false },
+    profilePhotoMime: { type: String, trim: true, default: "" },
     team: { type: mongoose.Schema.Types.ObjectId, ref: "Team", default: null, index: true },
     shift: { type: String, enum: SHIFT_TYPES, default: "Shift 1" },
     leaveBalance: {

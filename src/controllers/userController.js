@@ -177,10 +177,45 @@ export const deleteUser = async (req, res) => {
   res.status(StatusCodes.OK).json({ message: "User deleted successfully" });
 };
 
+export const getUserPhoto = async (req, res) => {
+  const user = await User.findById(req.params.id).select("profilePhotoData profilePhotoMime profilePhotoUrl").lean();
+  if (!user) {
+    throw new AppError("User not found", StatusCodes.NOT_FOUND);
+  }
+
+  if (!user.profilePhotoData || !user.profilePhotoMime) {
+    return res.status(StatusCodes.NOT_FOUND).json({ message: "Profile photo not found" });
+  }
+
+  const photoBuffer = Buffer.isBuffer(user.profilePhotoData)
+    ? user.profilePhotoData
+    : Buffer.from(user.profilePhotoData.buffer || user.profilePhotoData);
+
+  res.setHeader("Content-Type", user.profilePhotoMime);
+  res.setHeader("Content-Length", photoBuffer.length);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.send(photoBuffer);
+};
+
 export const uploadUserPhoto = async (req, res) => {
   if (!req.file) {
     throw new AppError("No file uploaded", StatusCodes.BAD_REQUEST);
   }
-  const url = `${req.protocol}://${req.get("host")}/uploads/profiles/${req.file.filename}`;
+
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    throw new AppError("User not found", StatusCodes.NOT_FOUND);
+  }
+
+  const urlBase = `${req.protocol}://${req.get("host")}/api/users/${user._id}/photo`;
+  const url = `${urlBase}?t=${Date.now()}`;
+  await User.findByIdAndUpdate(user._id, {
+    profilePhotoUrl: url,
+    profilePhotoData: req.file.buffer,
+    profilePhotoMime: req.file.mimetype
+  });
+
   res.status(StatusCodes.CREATED).json({ url });
 };

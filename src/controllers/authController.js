@@ -49,8 +49,15 @@ export const uploadProfilePhoto = async (req, res) => {
   if (!req.file) {
     throw new AppError("No file uploaded", StatusCodes.BAD_REQUEST);
   }
-  const url = `${req.protocol}://${req.get("host")}/uploads/profiles/${req.file.filename}`;
-  await User.findByIdAndUpdate(req.user._id, { profilePhotoUrl: url });
+
+  const urlBase = `${req.protocol}://${req.get("host")}/api/users/${req.user._id}/photo`;
+  const url = `${urlBase}?t=${Date.now()}`;
+  await User.findByIdAndUpdate(req.user._id, {
+    profilePhotoUrl: url,
+    profilePhotoData: req.file.buffer,
+    profilePhotoMime: req.file.mimetype
+  });
+
   res.status(StatusCodes.OK).json({ url });
 };
 

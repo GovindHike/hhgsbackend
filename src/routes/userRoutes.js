@@ -1,24 +1,14 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import { createUser, deleteUser, getMentionUsers, getUsers, updateUser, uploadUserPhoto } from "../controllers/userController.js";
+import { createUser, deleteUser, getMentionUsers, getUsers, getUserPhoto, updateUser, uploadUserPhoto } from "../controllers/userController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { userValidators } from "../validators.js";
 import { ADMIN_ROLES } from "../utils/constants.js";
-import { env } from "../config/env.js";
 
 const router = Router();
 
-const profileStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, path.join(env.uploadsDir, "profiles"));
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-  }
-});
+const profileStorage = multer.memoryStorage();
 
 const uploadProfile = multer({
   storage: profileStorage,
@@ -30,6 +20,7 @@ const uploadProfile = multer({
 });
 
 router.get("/mentions", protect, getMentionUsers);
+router.get("/:id/photo", getUserPhoto);
 router.use(protect, authorize(...ADMIN_ROLES));
 router.route("/").get(getUsers).post(validate(userValidators.create), createUser);
 router.post("/:id/photo", uploadProfile.single("photo"), uploadUserPhoto);
