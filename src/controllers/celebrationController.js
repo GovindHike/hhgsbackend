@@ -106,14 +106,19 @@ export const getLinkedInStatus = (_req, res) => {
   const authorUrn = env.linkedInMemberUrn || env.linkedInOrgUrn || "";
   const hasStaticToken = Boolean(env.linkedInAccessToken);
   const hasRefreshFlow = Boolean(env.linkedInClientId && env.linkedInClientSecret && env.linkedInRefreshToken);
-  const isValidMemberUrn = /^urn:li:person:[A-Za-z0-9_-]+$/.test(authorUrn);
+  const isValidPersonUrn = /^urn:li:person:[A-Za-z0-9_-]+$/.test(authorUrn);
+  const isValidLegacyMemberUrn = /^urn:li:member:[A-Za-z0-9_-]+$/.test(authorUrn);
   const isValidOrgUrn = /^urn:li:organization:\d+$/.test(authorUrn);
-  const hasValidAuthorUrn = isValidMemberUrn || isValidOrgUrn;
+  const hasValidAuthorUrn = isValidPersonUrn || isValidLegacyMemberUrn || isValidOrgUrn;
+  const normalizedAuthorUrn = isValidLegacyMemberUrn
+    ? authorUrn.replace("urn:li:member:", "urn:li:person:")
+    : authorUrn;
 
   res.status(StatusCodes.OK).json({
     enabled: env.linkedInEnabled,
     configured: hasValidAuthorUrn && (hasStaticToken || hasRefreshFlow),
     authorUrn: authorUrn ? `${authorUrn.slice(0, 36)}…` : "",
+    normalizedAuthorUrn: normalizedAuthorUrn ? `${normalizedAuthorUrn.slice(0, 36)}…` : "",
     hasStaticToken,
     hasRefreshFlow,
     hasValidAuthorUrn,
@@ -261,21 +266,28 @@ export const manualPost = async (req, res) => {
     createdBy:   author._id
   });
 
+  let linkedInError = null;
   if (source === "birthday" && generatedLocalPath) {
     const commentary =
       `🎂 Happy Birthday, ${user.name}!\n\n` +
       `Wishing ${user.name}${user.role ? `, our ${user.role},` : ""} a joyful birthday!\n\n` +
       `#HappyBirthday #TeamCelebration #HikeHealthGS`;
-    postBirthdayToLinkedIn({
-      name:           user.name,
-      role:           user.role || "",
-      commentary,
-      localImagePath: generatedLocalPath
-    }).catch((err) => console.error("[LinkedIn] fire-and-forget error:", err.message));
+    try {
+      await postBirthdayToLinkedIn({
+        name:           user.name,
+        role:           user.role || "",
+        commentary,
+        localImagePath: generatedLocalPath
+      });
+    } catch (err) {
+      console.error("[LinkedIn] manual post error:", err.message);
+      linkedInError = err.message;
+    }
   }
 
   return res.status(StatusCodes.CREATED).json({
     message:      "Posted successfully",
-    announcement: { _id: announcement._id, title: announcement.title }
+    announcement: { _id: announcement._id, title: announcement.title },
+    linkedInError
   });
 };

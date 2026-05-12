@@ -289,12 +289,14 @@ export const updateTask = async (req, res) => {
     }
   }
 
-  const { title, description, projectName, taskDate, dueDate, assignedTo } = req.body;
+  const { title, description, projectName, taskDate, dueDate, assignedTo, category, status } = req.body;
   if (title !== undefined) task.title = title;
   if (description !== undefined) task.description = description;
   if (projectName !== undefined) task.projectName = projectName || "General";
   if (taskDate !== undefined) task.taskDate = taskDate;
   if (dueDate !== undefined) task.dueDate = dueDate || null;
+  if (category !== undefined) task.category = category;
+  if (status !== undefined) task.status = status;
   if (assignedTo !== undefined && !EMPLOYEE_ROLES.includes(req.user.role)) {
     task.assignedTo = assignedTo;
   }

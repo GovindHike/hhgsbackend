@@ -1,5 +1,5 @@
 import Joi from "joi";
-import { ASSET_STATUSES, LEAVE_STATUSES, ROLES, SHIFT_TYPES, TASK_STATUSES } from "./utils/constants.js";
+import { ASSET_STATUSES, LEAVE_STATUSES, ROLES, SHIFT_TYPES, TASK_STATUSES, TASK_CATEGORIES } from "./utils/constants.js";
 
 const emailRule = Joi.string().email({ tlds: { allow: false } });
 
@@ -176,7 +176,9 @@ export const taskValidators = {
     assignedTo: Joi.string().allow("", null),
     taskDate: Joi.date().required(),
     dueDate: Joi.date().allow(null),
-    isDailyTask: Joi.boolean().default(false)
+    isDailyTask: Joi.boolean().default(false),
+    category: Joi.string().valid(...TASK_CATEGORIES).default("Feature"),
+    status: Joi.string().valid(...TASK_STATUSES).default("Backlog")
   }),
   updateStatus: Joi.object({
     status: Joi.string().valid(...TASK_STATUSES).required()
@@ -187,7 +189,9 @@ export const taskValidators = {
     projectName: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
     taskDate: Joi.date(),
-    dueDate: Joi.date().allow(null)
+    dueDate: Joi.date().allow(null),
+    category: Joi.string().valid(...TASK_CATEGORIES),
+    status: Joi.string().valid(...TASK_STATUSES)
   }).min(1),
   command: Joi.object({
     message: Joi.string().trim().required()

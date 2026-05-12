@@ -95,6 +95,12 @@ const settingSchema = new mongoose.Schema(
     attendancePolicy: {
       type: attendancePolicySchema,
       default: () => ({})
+    },
+    linkedIn: {
+      accessToken:  { type: String, default: "" },
+      refreshToken: { type: String, default: "" },
+      expiresAt:    { type: Number, default: 0 },  // Unix ms timestamp
+      memberUrn:    { type: String, default: "" }  // urn:li:member:<numericId> — saved at OAuth connect
     }
   },
   {

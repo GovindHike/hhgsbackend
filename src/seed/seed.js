@@ -114,7 +114,9 @@ const run = async () => {
     projectName: "Delivery Operations",
     assignedTo: employee._id,
     assignedBy: lead._id,
-    status: "In Progress"
+    taskDate: new Date(),
+    status: "In Progress",
+    category: "Feature"
   });
 
   await Leave.create({

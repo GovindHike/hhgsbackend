@@ -82,7 +82,7 @@ export const getDailyProjectStatusReportPayload = async () => {
     employeeName: leave.user?.name || "Unknown",
     leaveType: leave.requestedType || leave.finalType || "N/A",
     // Format dates in IST so the displayed date matches what the user selected
-    leaveDuration: `${toISTDateStr(leave.startDate)} to ${toISTDateStr(leave.endDate)}`,
+    leaveDuration: (() => { const s = toISTDateStr(leave.startDate); const e = toISTDateStr(leave.endDate); return s === e ? s : `${s} to ${e}`; })(),
     leaveStatus: leave.status
   }));
 
@@ -107,12 +107,13 @@ export const getDailyProjectStatusReportPayload = async () => {
   };
 };
 
-export const sendDailyProjectStatusReport = async () => {
+export const sendDailyProjectStatusReport = async (overrides = {}) => {
   const { mail, recipients } = await getDailyProjectStatusReportPayload();
 
   await sendEmail({
     to: recipients.to.join(","),
     cc: recipients.cc.join(","),
-    ...mail
+    subject: overrides.subject || mail.subject,
+    html: overrides.html || mail.html
   });
 };

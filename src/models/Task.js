@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { TASK_STATUSES } from "../utils/constants.js";
+import { TASK_STATUSES, TASK_CATEGORIES } from "../utils/constants.js";
 
 const commandSchema = new mongoose.Schema(
   {
@@ -16,7 +16,8 @@ const taskSchema = new mongoose.Schema(
     projectName: { type: String, trim: true, default: "General", index: true },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    status: { type: String, enum: TASK_STATUSES, default: "Pending", index: true },
+    status: { type: String, enum: TASK_STATUSES, default: "Backlog", index: true },
+    category: { type: String, enum: TASK_CATEGORIES, default: "Feature", index: true },
     taskDate: { type: Date, required: true, index: true, default: Date.now },
     dueDate: { type: Date, default: null, index: true },
     isDailyTask: { type: Boolean, default: false },

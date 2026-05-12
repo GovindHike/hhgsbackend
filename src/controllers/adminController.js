@@ -13,8 +13,9 @@ export const sendBroadcastEmail = async (req, res) => {
   res.status(StatusCodes.OK).json({ message: "Broadcast email processed" });
 };
 
-export const sendDailyStatusReport = async (_req, res) => {
-  await sendDailyProjectStatusReport();
+export const sendDailyStatusReport = async (req, res) => {
+  const { subject, html } = req.body || {};
+  await sendDailyProjectStatusReport({ subject, html });
   res.status(StatusCodes.OK).json({ message: "Daily project status report sent" });
 };
 

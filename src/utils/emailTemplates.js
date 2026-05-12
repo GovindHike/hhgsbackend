@@ -17,11 +17,6 @@ const emailWrapper = (content) => `
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
           <tr>
-            <td style="background:${BRAND_COLOR};padding:28px 40px;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">${COMPANY_NAME} Office Portal</h1>
-            </td>
-          </tr>
-          <tr>
             <td style="padding:36px 40px;color:${BRAND_DARK};line-height:1.7;font-size:15px;">
               ${content}
             </td>
@@ -175,7 +170,7 @@ export const dailyProjectStatusTemplate = ({ generatedAt, projectSummary, taskSu
                 ${employee.tasks.map((task) => `
                   <li style="font-size:13px;color:#475569;padding:2px 0;">
                     ${task.title}
-                    <span style="display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:6px;background:${task.status === "Completed" ? "#dcfce7" : task.status === "In Progress" ? "#dbeafe" : "#f1f5f9"};color:${task.status === "Completed" ? "#166534" : task.status === "In Progress" ? "#1d4ed8" : "#475569"};">
+                    <span style="display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:6px;background:${task.status === "Completed" ? "#dcfce7" : task.status === "In Progress" ? "#dbeafe" : task.status === "QA Needed" ? "#f3e8ff" : task.status === "Ready" ? "#eff6ff" : "#f1f5f9"};color:${task.status === "Completed" ? "#166534" : task.status === "In Progress" ? "#1d4ed8" : task.status === "QA Needed" ? "#7c3aed" : task.status === "Ready" ? "#2563eb" : "#475569"};">
                       ${task.status}
                     </span>
                   </li>

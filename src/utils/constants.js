@@ -26,7 +26,8 @@ export const isAdminRole = (role = "") => ADMIN_ROLES.includes(role);
 export const isTeamLeadRole = (role = "") => TEAM_LEAD_ROLES.includes(role);
 export const isEmployeeRole = (role = "") => EMPLOYEE_ROLES.includes(role);
 
-export const TASK_STATUSES = ["Pending", "In Progress", "Completed"];
+export const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "QA Needed", "Completed"];
+export const TASK_CATEGORIES = ["Bug/Issue", "Enhancement", "Feature"];
 export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected", "Cancelled"];
 export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Retired"];
 
