@@ -1,6 +1,8 @@
 import { Server } from "socket.io";
 import { User } from "../models/User.js";
 import { createAuthPayload, signAccessToken, validateSessionToken } from "../utils/token.js";
+import { recordHeartbeat, removeUser, buildStatusPayload } from "../utils/activityTracker.js";
+import { ADMIN_ROLES, TEAM_LEAD_ROLES } from "../utils/constants.js";
 
 let io;
 const userSockets = new Map();
@@ -58,6 +60,7 @@ export const initSocketServer = (httpServer, clientUrl) => {
         id: String(user._id),
         name: user.name,
         role: user.role,
+        team: user.team ? String(user.team) : null,
         renewedToken: shouldRenew ? signAccessToken(createAuthPayload(user)) : null
       };
 
@@ -72,12 +75,36 @@ export const initSocketServer = (httpServer, clientUrl) => {
     addSocketForUser(userId, socket.id);
     socket.join(`user:${userId}`);
 
+    if (ADMIN_ROLES.includes(socket.user.role)) {
+      socket.join("room:ADMIN");
+    } else if (TEAM_LEAD_ROLES.includes(socket.user.role)) {
+      socket.join("room:TEAM_LEAD");
+    }
+
     if (socket.user.renewedToken) {
       socket.emit("auth:refresh", { token: socket.user.renewedToken });
     }
 
+    socket.on("activity:heartbeat", () => {
+      recordHeartbeat(userId, {
+        name: socket.user.name,
+        role: socket.user.role,
+        team: socket.user.team
+      });
+      const payload = buildStatusPayload(userId);
+      io.to("room:ADMIN").emit("activity:status_update", payload);
+      io.to("room:TEAM_LEAD").emit("activity:status_update", payload);
+    });
+
     socket.on("disconnect", () => {
       removeSocketForUser(userId, socket.id);
+      const remaining = userSockets.get(userId);
+      if (!remaining || remaining.size === 0) {
+        removeUser(userId);
+        const offlinePayload = { userId, status: "offline" };
+        io.to("room:ADMIN").emit("activity:status_update", offlinePayload);
+        io.to("room:TEAM_LEAD").emit("activity:status_update", offlinePayload);
+      }
     });
   });
 

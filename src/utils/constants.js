@@ -32,3 +32,5 @@ export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected", "Cancelled"];
 export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Retired"];
 
 export const SHIFT_TYPES = ["Shift 1", "Shift 2"];
+
+export const IDLE_THRESHOLD_MINUTES = 10;

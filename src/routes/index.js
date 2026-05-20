@@ -12,6 +12,7 @@ import notificationRoutes from "./notificationRoutes.js";
 import settingRoutes from "./settingRoutes.js";
 import celebrationRoutes from "./celebrationRoutes.js";
 import mobileRoutes from "./mobileRoutes.js";
+import activityRoutes from "./activityRoutes.js";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/notifications", notificationRoutes);
 router.use("/settings", settingRoutes);
 router.use("/celebrations", celebrationRoutes);
 router.use("/mobile", mobileRoutes);
+router.use("/activity", activityRoutes);
 
 export default router;

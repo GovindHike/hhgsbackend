@@ -48,8 +48,8 @@ export const startAutoCheckoutJob = () => {
 
       await Promise.all(
         records.map(async (record) => {
-          const lastSession = record.sessions.at(-1);
-          if (!lastSession || lastSession.checkOut) {
+          const activeSession = record.sessions.find((session) => session && !session.checkOut);
+          if (!activeSession) {
             return;
           }
 
@@ -66,11 +66,11 @@ export const startAutoCheckoutJob = () => {
             lunchBreakEnd &&
             lunchBreakStart.isValid() &&
             lunchBreakEnd.isValid() &&
-            !lastSession.lunchReminderSentAt &&
+            !activeSession.lunchReminderSentAt &&
             now.isAfter(lunchBreakStart) &&
             now.isBefore(lunchBreakEnd)
           ) {
-            lastSession.lunchReminderSentAt = now.toDate();
+            activeSession.lunchReminderSentAt = now.toDate();
             await record.save();
             await notifyLunchCheckoutReminder(
               record.user,
@@ -80,17 +80,17 @@ export const startAutoCheckoutJob = () => {
             return;
           }
 
-          if (!lastSession.reminderSentAt && now.isAfter(reminderAt) && now.isBefore(autoCheckoutAt)) {
-            lastSession.reminderSentAt = now.toDate();
+          if (!activeSession.reminderSentAt && now.isAfter(reminderAt) && now.isBefore(autoCheckoutAt)) {
+            activeSession.reminderSentAt = now.toDate();
             await record.save();
             await notifyMissedCheckoutReminder(record.user, record._id, shiftEnd.format("hh:mm A"));
             return;
           }
 
           if (now.isAfter(autoCheckoutAt)) {
-            lastSession.checkOut = shiftEnd.toDate();
-            lastSession.autoCheckoutApplied = true;
-            lastSession.autoCheckedOutAt = now.toDate();
+            activeSession.checkOut = shiftEnd.toDate();
+            activeSession.autoCheckoutApplied = true;
+            activeSession.autoCheckedOutAt = now.toDate();
             applyLunchBreakPolicy(record, now);
             const summary = computeAttendanceSummary(record.sessions, record.shiftSnapshot || shiftSnapshot);
             record.totalHours = summary.totalHours;
