@@ -7,7 +7,9 @@ import { startDailyReportJob } from "./jobs/dailyReportJob.js";
 import { migrateLeaveBalance } from "./jobs/migrateLeaveBalance.js";
 import { resetLeaveBalances, startLeaveResetJob } from "./jobs/leaveResetJob.js";
 import { startCelebrationJob } from "./jobs/celebrationJob.js";
+import { startPushNotificationJob } from "./jobs/pushNotificationJob.js";
 import { initSocketServer } from "./socket/socketServer.js";
+import { initializeWebPush } from "./services/webPushService.js";
 
 const startServer = async () => {
   await connectDatabase();
@@ -17,6 +19,7 @@ const startServer = async () => {
   const httpServer = http.createServer(app);
 
   initSocketServer(httpServer, env.clientUrl);
+  initializeWebPush();
 
   httpServer.listen(env.port, () => {
     console.log(`Backend server running on port ${env.port}`);
@@ -26,6 +29,7 @@ const startServer = async () => {
   startDailyReportJob();
   startLeaveResetJob();
   startCelebrationJob();
+  startPushNotificationJob();
 };
 
 startServer();

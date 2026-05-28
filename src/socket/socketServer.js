@@ -85,12 +85,12 @@ export const initSocketServer = (httpServer, clientUrl) => {
       socket.emit("auth:refresh", { token: socket.user.renewedToken });
     }
 
-    socket.on("activity:heartbeat", () => {
-      recordHeartbeat(userId, {
-        name: socket.user.name,
-        role: socket.user.role,
-        team: socket.user.team
-      });
+    socket.on("activity:heartbeat", ({ isActive = true } = {}) => {
+      recordHeartbeat(
+        userId,
+        { name: socket.user.name, role: socket.user.role, team: socket.user.team },
+        isActive
+      );
       const payload = buildStatusPayload(userId);
       io.to("room:ADMIN").emit("activity:status_update", payload);
       io.to("room:TEAM_LEAD").emit("activity:status_update", payload);

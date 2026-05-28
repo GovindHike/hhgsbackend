@@ -22,7 +22,7 @@ const attendanceSessionSchema = new mongoose.Schema(
   {
     checkIn: { type: Date, required: true },
     checkOut: { type: Date, default: null },
-    reason: { type: String, enum: ["Lunch", "Permission", "Regular", "Other"], default: "Regular" },
+    reason: { type: String, enum: ["Lunch", "Permission", "Break", "Regular", "Other"], default: "Regular" },
     reasonNote: { type: String, default: "", trim: true },
     lunchMinutes: { type: Number, default: 0 },
     permissionMinutes: { type: Number, default: 0 },

@@ -36,6 +36,15 @@ export const env = {
   autoCheckoutNightCron: process.env.AUTO_CHECKOUT_NIGHT_CRON || "0 3 * * *",
   dailyReportCron: process.env.DAILY_REPORT_CRON || "0 18 * * *",
   celebrationCron: process.env.CELEBRATION_CRON || "5 0 * * *",
+  pushNotificationCron: process.env.PUSH_NOTIFICATION_CRON || "*/2 * * * *",
+  webPushVapidSubject: process.env.WEB_PUSH_VAPID_SUBJECT || process.env.VAPID_EMAIL || "mailto:admin@office.local",
+  webPushVapidPublicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY || "",
+  webPushVapidPrivateKey: process.env.WEB_PUSH_VAPID_PRIVATE_KEY || process.env.VAPID_PRIVATE_KEY || "",
+  webPushEnabled: process.env.PUSH_NOTIFICATIONS_ENABLED !== "false"
+    && Boolean(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY)
+    && Boolean(process.env.WEB_PUSH_VAPID_PRIVATE_KEY || process.env.VAPID_PRIVATE_KEY),
+  mobilePushEnabled: process.env.MOBILE_PUSH_NOTIFICATIONS_ENABLED !== "false",
+  expoPushApiUrl: process.env.EXPO_PUSH_API_URL || "https://exp.host/--/api/v2/push/send",
   // ── Backend self-reference (used by cron jobs that build absolute URLs) ──
   backendUrl: process.env.BACKEND_URL || `http://localhost:${Number(process.env.PORT || 5000)}`,
   // ── System / company author for auto-generated announcements ─────────────

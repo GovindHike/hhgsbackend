@@ -10,7 +10,7 @@ import { Setting } from "../models/Setting.js";
 
 const todayKey = () => dayjs().format("YYYY-MM-DD");
 const ATTENDANCE_POLICY_KEY = "attendance_policy";
-const VALID_CHECKOUT_REASONS = ["Lunch", "Permission", "Regular", "Other"];
+const VALID_CHECKOUT_REASONS = ["Lunch", "Permission", "Break", "Regular", "Other"];
 
 const getAttendancePolicy = async () => {
   const setting = await Setting.findOne({ key: ATTENDANCE_POLICY_KEY }).lean();

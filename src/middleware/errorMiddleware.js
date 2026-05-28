@@ -7,7 +7,8 @@ export const notFoundHandler = (req, _res, next) => {
 };
 
 export const errorHandler = (err, _req, res, _next) => {
-  const statusCode = err.statusCode || StatusCodes.INTERNAL_SERVER_ERROR;
+  // err.status is used by multer (MulterError) and some other middleware
+  const statusCode = err.statusCode || err.status || StatusCodes.INTERNAL_SERVER_ERROR;
 
   res.status(statusCode).json({
     message: err.message || "Internal server error",

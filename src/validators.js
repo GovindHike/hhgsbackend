@@ -221,3 +221,28 @@ export const leaveValidators = {
     })
   })
 };
+
+export const notificationValidators = {
+  subscribePush: Joi.object({
+    subscription: Joi.object({
+      endpoint: Joi.string().uri().required(),
+      expirationTime: Joi.alternatives().try(Joi.date(), Joi.valid(null)),
+      keys: Joi.object({
+        p256dh: Joi.string().required(),
+        auth: Joi.string().required()
+      }).required()
+    }).required()
+  }),
+  unsubscribePush: Joi.object({
+    endpoint: Joi.string().uri().required()
+  }),
+  registerPushToken: Joi.object({
+    token: Joi.string().required(),
+    provider: Joi.string().valid("expo").default("expo"),
+    platform: Joi.string().valid("ios", "android", "web", "unknown").default("unknown"),
+    app: Joi.string().valid("mobile", "web", "desktop").default("mobile")
+  }),
+  unregisterPushToken: Joi.object({
+    token: Joi.string().required()
+  })
+};
