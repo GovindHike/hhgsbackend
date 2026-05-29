@@ -4,9 +4,8 @@ import { env } from "../config/env.js";
 import { Attendance } from "../models/Attendance.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
-import { sendMobilePushToUsers } from "../services/mobilePushService.js";
+import { createNotification } from "../services/notificationService.js";
 import { DEFAULT_ATTENDANCE_POLICY, getShiftWindow, normalizeAttendancePolicy, resolveShiftSnapshot } from "../utils/attendance.js";
-import { sendWebPushToUsers } from "../services/webPushService.js";
 
 const ATTENDANCE_POLICY_KEY = "attendance_policy";
 const CHECKIN_REMINDER_TYPE = "attendance_shift_start_checkin_reminder";
@@ -46,25 +45,14 @@ const isWorkingDay = (dateKey, policy) => {
 const getRecordKey = (userId, dateKey) => `${String(userId)}::${dateKey}`;
 
 const sendPush = async ({ userId, title, body, type, redirectUrl = "/attendance" }) => {
-  const payload = {
+  await createNotification({
+    recipients: [userId],
     title,
-    body,
+    message: body,
     type,
-    redirectUrl,
-    // Use unique tag so repeated 2-minute reminders are visible each time.
-    tag: `${type}-${String(userId)}-${Date.now()}`
-  };
-
-  await Promise.all([
-    sendWebPushToUsers({
-      userIds: [userId],
-      payload
-    }),
-    sendMobilePushToUsers({
-      userIds: [userId],
-      payload
-    })
-  ]);
+    entityType: "Attendance",
+    redirectUrl
+  });
 };
 
 const isAnyPushChannelEnabled = () => {
