@@ -5,7 +5,7 @@ import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
 import { generateBirthdayCard, generateAnniversaryCard } from "../services/birthdayCardService.js";
-import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
+import { getLinkedInRuntimeConfig, postBirthdayToLinkedIn } from "../services/linkedInService.js";
 import { createNotification } from "../services/notificationService.js";
 import { runCelebrationAnnouncementsForDate } from "../jobs/celebrationJob.js";
 
@@ -35,15 +35,23 @@ const normalizeSection = (section = {}) => ({
   imageTemplate: String(section.imageTemplate || "").trim()
 });
 
-const normalizeConfig = (value = {}) => ({
-  birthday: normalizeSection(value.birthday),
-  anniversary: normalizeSection(value.anniversary)
-});
+const normalizeConfig = (value = {}) => {
+  const source = value && typeof value === "object" ? value : {};
+  const anniversary = source.anniversary || source.work_anniversary || {};
 
-const mergeWithDefaults = (value = {}) => ({
-  birthday: { ...DEFAULT_CONFIG.birthday, ...(value.birthday || {}) },
-  anniversary: { ...DEFAULT_CONFIG.anniversary, ...(value.anniversary || {}) }
-});
+  return {
+    birthday: normalizeSection(source.birthday),
+    anniversary: normalizeSection(anniversary)
+  };
+};
+
+const mergeWithDefaults = (value = {}) => {
+  const normalized = normalizeConfig(value);
+  return {
+    birthday: { ...DEFAULT_CONFIG.birthday, ...normalized.birthday },
+    anniversary: { ...DEFAULT_CONFIG.anniversary, ...normalized.anniversary }
+  };
+};
 
 const renderTpl = (template, values) =>
   String(template || "").replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) =>
@@ -62,7 +70,7 @@ const getRequestBaseUrl = (req) => `${req.protocol}://${req.get("host")}`;
 
 export const getCelebrationTemplates = async (_req, res) => {
   const setting = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
-  const config = mergeWithDefaults(normalizeConfig(setting?.templates || {}));
+  const config = mergeWithDefaults(setting?.templates || {});
 
   res.status(StatusCodes.OK).json({
     key: CELEBRATION_KEY,
@@ -102,26 +110,18 @@ export const triggerCelebrations = async (req, res) => {
   });
 };
 
-export const getLinkedInStatus = (_req, res) => {
-  const authorUrn = env.linkedInMemberUrn || env.linkedInOrgUrn || "";
+export const getLinkedInStatus = async (_req, res) => {
+  const runtime = await getLinkedInRuntimeConfig();
   const hasStaticToken = Boolean(env.linkedInAccessToken);
   const hasRefreshFlow = Boolean(env.linkedInClientId && env.linkedInClientSecret && env.linkedInRefreshToken);
-  const isValidPersonUrn = /^urn:li:person:[A-Za-z0-9_-]+$/.test(authorUrn);
-  const isValidLegacyMemberUrn = /^urn:li:member:[A-Za-z0-9_-]+$/.test(authorUrn);
-  const isValidOrgUrn = /^urn:li:organization:\d+$/.test(authorUrn);
-  const hasValidAuthorUrn = isValidPersonUrn || isValidLegacyMemberUrn || isValidOrgUrn;
-  const normalizedAuthorUrn = isValidLegacyMemberUrn
-    ? authorUrn.replace("urn:li:member:", "urn:li:person:")
-    : authorUrn;
 
   res.status(StatusCodes.OK).json({
     enabled: env.linkedInEnabled,
-    configured: hasValidAuthorUrn && (hasStaticToken || hasRefreshFlow),
-    authorUrn: authorUrn ? `${authorUrn.slice(0, 36)}…` : "",
-    normalizedAuthorUrn: normalizedAuthorUrn ? `${normalizedAuthorUrn.slice(0, 36)}…` : "",
+    configured: runtime.configured,
+    accountName: runtime.accountName || "",
+    personIdMasked: runtime.personId ? `${runtime.personId.slice(0, 6)}…` : "",
     hasStaticToken,
     hasRefreshFlow,
-    hasValidAuthorUrn,
     apiVersion: env.linkedInApiVersion
   });
 };
@@ -182,7 +182,13 @@ export const previewCard = async (req, res) => {
  * specific employee — sends in-app notifications and fires LinkedIn if active.
  */
 export const manualPost = async (req, res) => {
-  const { userId, type = "birthday" } = req.body;
+  const {
+    userId,
+    type = "birthday",
+    title: customTitle = "",
+    content: customContent = "",
+    linkedInCommentary: customLinkedInCommentary = ""
+  } = req.body;
   const source = type === "anniversary" ? "work_anniversary" : "birthday";
 
   const user = await User.findById(userId).select("_id name role profilePhotoUrl joiningDate").lean();
@@ -193,16 +199,21 @@ export const manualPost = async (req, res) => {
   const setting   = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
   const templates = mergeWithDefaults(setting?.templates || {});
   const template  = templates[type] || templates.birthday;
+  const fallback  = DEFAULT_CONFIG[type] || DEFAULT_CONFIG.birthday;
 
   const values = {
     name:  user.name,
     quote: template.defaultQuote || "",
-    years: "",
+    years: source === "work_anniversary" && user.joiningDate
+      ? Math.max(new Date().getUTCFullYear() - new Date(user.joiningDate).getUTCFullYear(), 0)
+      : "",
     photo: user.profilePhotoUrl || ""
   };
 
-  const title   = renderTpl(template.titleTemplate,   values).trim();
-  const content = renderTpl(template.contentTemplate, values).trim();
+  const titleTemplate = String(template.titleTemplate || "").trim() || fallback.titleTemplate;
+  const contentTemplate = String(template.contentTemplate || "").trim() || fallback.contentTemplate;
+  const title = String(customTitle || "").trim() || renderTpl(titleTemplate, values).trim();
+  const content = String(customContent || "").trim() || renderTpl(contentTemplate, values).trim();
 
   if (!content) {
     return res.status(StatusCodes.BAD_REQUEST).json({ message: "Template content is empty — please save a content template first." });
@@ -267,11 +278,15 @@ export const manualPost = async (req, res) => {
   });
 
   let linkedInError = null;
-  if (source === "birthday" && generatedLocalPath) {
-    const commentary =
-      `🎂 Happy Birthday, ${user.name}!\n\n` +
-      `Wishing ${user.name}${user.role ? `, our ${user.role},` : ""} a joyful birthday!\n\n` +
-      `#HappyBirthday #TeamCelebration #HikeHealthGS`;
+  if ((source === "birthday" || source === "work_anniversary") && generatedLocalPath) {
+    const fallbackCommentary = source === "birthday"
+      ? `🎂 Happy Birthday, ${user.name}!\n\n` +
+        `Wishing ${user.name}${user.role ? `, our ${user.role},` : ""} a joyful birthday!\n\n` +
+        `#HappyBirthday #TeamCelebration #HikeHealthGS`
+      : `🎉 Happy Work Anniversary, ${user.name}!\n\n` +
+        `Congratulations to ${user.name}${user.role ? `, our ${user.role},` : ""} on this milestone with us.\n\n` +
+        `#WorkAnniversary #TeamCelebration #HikeHealthGS`;
+    const commentary = String(customLinkedInCommentary || "").trim() || fallbackCommentary;
     try {
       await postBirthdayToLinkedIn({
         name:           user.name,

@@ -100,7 +100,9 @@ const settingSchema = new mongoose.Schema(
       accessToken:  { type: String, default: "" },
       refreshToken: { type: String, default: "" },
       expiresAt:    { type: Number, default: 0 },  // Unix ms timestamp
-      memberUrn:    { type: String, default: "" }  // urn:li:member:<numericId> — saved at OAuth connect
+      memberUrn:    { type: String, default: "" }, // Backward compatibility with older URN-based flow
+      personId:     { type: String, default: "" },
+      accountName:  { type: String, default: "" }
     }
   },
   {

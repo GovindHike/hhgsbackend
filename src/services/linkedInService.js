@@ -142,6 +142,185 @@ function compactMessage(value, max = 320) {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
+function extractPersonIdFromUrn(urn = "") {
+  const text = String(urn || "").trim();
+  const m = /^urn:li:(?:person|member):(\d+)$/.exec(text);
+  return m ? m[1] : "";
+}
+
+function buildPersonUrn(personId) {
+  return `urn:li:person:${String(personId || "").trim()}`;
+}
+
+function buildLinkedInFeedUrl(postId) {
+  const safePostId = String(postId || "").trim();
+  return `https://www.linkedin.com/feed/update/${safePostId}/`;
+}
+
+export async function fetchLinkedInUserInfo(accessToken) {
+  const res = await httpsRequest({
+    hostname: LI_HOST,
+    path: "/v2/userinfo",
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "X-Restli-Protocol-Version": "2.0.0",
+    },
+  });
+
+  if (res.status !== 200) {
+    throw new Error(`LinkedIn userinfo fetch failed (${res.status}): ${compactMessage(res.body) || "No response body"}`);
+  }
+
+  const payload = parseJsonBody(res.body) || {};
+  const personId = String(payload.sub || "").trim();
+  const accountName = String(payload.name || "").trim();
+  if (!personId) {
+    throw new Error("LinkedIn userinfo payload missing sub (person id)");
+  }
+
+  return { personId, accountName };
+}
+
+export async function getLinkedInRuntimeConfig() {
+  let dbLinkedIn = null;
+  try {
+    const setting = await Setting.findOne({ key: LINKEDIN_SETTING_KEY }).lean();
+    dbLinkedIn = setting?.linkedIn || null;
+  } catch {
+    dbLinkedIn = null;
+  }
+
+  const accessToken = String(dbLinkedIn?.accessToken || env.linkedInAccessToken || "").trim();
+  const personId = String(
+    dbLinkedIn?.personId
+      || env.linkedInPersonId
+      || extractPersonIdFromUrn(dbLinkedIn?.memberUrn)
+      || extractPersonIdFromUrn(env.linkedInMemberUrn)
+      || ""
+  ).trim();
+  const accountName = String(dbLinkedIn?.accountName || env.linkedInAccountName || "").trim();
+
+  return {
+    accessToken,
+    personId,
+    accountName,
+    configured: Boolean(accessToken && personId),
+  };
+}
+
+export async function postImageToLinkedIn({ accessToken, personId, caption, imageBuffer, mimeType }) {
+  const owner = buildPersonUrn(personId);
+
+  const registerBody = JSON.stringify({
+    registerUploadRequest: {
+      recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+      owner,
+      serviceRelationships: [
+        {
+          relationshipType: "OWNER",
+          identifier: "urn:li:userGeneratedContent",
+        },
+      ],
+    },
+  });
+
+  const registerRes = await httpsRequest(
+    {
+      hostname: LI_HOST,
+      path: "/v2/assets?action=registerUpload",
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(registerBody),
+      },
+    },
+    registerBody
+  );
+
+  if (registerRes.status !== 200 && registerRes.status !== 201) {
+    throw new Error(
+      `LinkedIn registerUpload failed (${registerRes.status}): ${compactMessage(registerRes.body) || "No response body"}`
+    );
+  }
+
+  const registerPayload = parseJsonBody(registerRes.body) || {};
+  const uploadUrl = registerPayload?.value?.uploadMechanism?.["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"]?.uploadUrl;
+  const assetUrn = registerPayload?.value?.asset;
+  if (!uploadUrl || !assetUrn) {
+    throw new Error("LinkedIn registerUpload response missing uploadUrl or asset URN");
+  }
+
+  const parsedUploadUrl = new URL(uploadUrl);
+  const uploadRes = await httpsRequest(
+    {
+      hostname: parsedUploadUrl.hostname,
+      path: parsedUploadUrl.pathname + parsedUploadUrl.search,
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": mimeType || "application/octet-stream",
+        "Content-Length": imageBuffer.length,
+      },
+    },
+    imageBuffer
+  );
+
+  if (uploadRes.status < 200 || uploadRes.status >= 300) {
+    throw new Error(`LinkedIn asset upload failed (${uploadRes.status}): ${compactMessage(uploadRes.body) || "No response body"}`);
+  }
+
+  const ugcBody = JSON.stringify({
+    author: owner,
+    lifecycleState: "PUBLISHED",
+    specificContent: {
+      "com.linkedin.ugc.ShareContent": {
+        shareCommentary: { text: String(caption || "") },
+        shareMediaCategory: "IMAGE",
+        media: [
+          {
+            status: "READY",
+            media: assetUrn,
+          },
+        ],
+      },
+    },
+    visibility: {
+      "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+    },
+  });
+
+  const ugcRes = await httpsRequest(
+    {
+      hostname: LI_HOST,
+      path: "/v2/ugcPosts",
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(ugcBody),
+      },
+    },
+    ugcBody
+  );
+
+  if (ugcRes.status !== 201) {
+    const suffix = ugcRes.status === 403 ? ` ${buildLinkedInForbiddenHint()}` : "";
+    throw new Error(`LinkedIn UGC post failed (${ugcRes.status}): ${compactMessage(ugcRes.body) || "No response body"}${suffix}`);
+  }
+
+  const ugcPayload = parseJsonBody(ugcRes.body) || {};
+  const postId = ugcRes.headers["x-restli-id"] || ugcPayload?.id || "";
+  return {
+    postId,
+    postUrl: buildLinkedInFeedUrl(postId),
+    assetUrn,
+  };
+}
+
 function buildLinkedInForbiddenHint() {
   return (
     "LinkedIn rejected the request (403). Verify that the access token belongs to the same member in LINKEDIN_MEMBER_URN, " +
@@ -531,7 +710,7 @@ async function uploadImageToLinkedIn(localImagePath, ownerUrn, accessToken) {
  * Persist an access token (and optional refresh token) to the database
  * so the server can post to LinkedIn immediately without restarting.
  */
-export async function saveLinkedInOAuthTokens({ accessToken, refreshToken, expiresInSec, memberUrn }) {
+export async function saveLinkedInOAuthTokens({ accessToken, refreshToken, expiresInSec, memberUrn, personId, accountName }) {
   const expiresAt = expiresInSec
     ? Date.now() + (Number(expiresInSec) - 60) * 1000
     : 0;
@@ -549,6 +728,15 @@ export async function saveLinkedInOAuthTokens({ accessToken, refreshToken, expir
   if (resolvedMemberUrn) {
     linkedInUpdate.memberUrn = resolvedMemberUrn;
     console.log("[LinkedIn] Saving member URN to DB:", resolvedMemberUrn);
+  }
+
+  const resolvedPersonId = String(personId || extractPersonIdFromUrn(resolvedMemberUrn) || "").trim();
+  if (resolvedPersonId) {
+    linkedInUpdate.personId = resolvedPersonId;
+  }
+
+  if (accountName) {
+    linkedInUpdate.accountName = String(accountName).trim();
   }
 
   await Setting.findOneAndUpdate(
@@ -609,168 +797,50 @@ export async function postBirthdayToLinkedIn({ name, role, commentary, localImag
     throw new Error("LinkedIn integration is disabled");
   }
 
-  const accessToken = await getLinkedInAccessToken();
+  const runtime = await getLinkedInRuntimeConfig();
+  const accessToken = runtime.accessToken || (await getLinkedInAccessToken()) || "";
+  let personId = runtime.personId;
+
   if (!accessToken) {
-    throw new Error(
-      "Could not obtain a LinkedIn access token — check LINKEDIN_ACCESS_TOKEN or reconnect LinkedIn via the Connect button"
-    );
+    throw new Error("LinkedIn is not configured. Connect LinkedIn again so token is available.");
   }
 
-  // Resolve the author URN: DB-saved URN (set at OAuth connect) > token-detected > env config.
-  // The DB URN is the most reliable because it was saved when the admin explicitly connected
-  // their account (with r_liteprofile scope available to return entityUrn).
-  const detectedAuthor = await detectLinkedInAuthorFromToken(accessToken);
-  const isOrgAuthor = /^urn:li:organization:\d+$/.test(env.linkedInOrgUrn || "");
-
-  let effectiveRestAuthorUrn = "";
-  let effectiveUgcAuthorUrn = "";
-
-  if (isOrgAuthor) {
-    effectiveRestAuthorUrn = env.linkedInOrgUrn;
-    effectiveUgcAuthorUrn = env.linkedInOrgUrn;
-  } else {
-    // Personal post: prefer token-detected URNs (detectedAuthor already checks DB saved URN).
-    effectiveRestAuthorUrn = detectedAuthor.personUrn || getLinkedInAuthorUrn();
-    effectiveUgcAuthorUrn  = detectedAuthor.memberUrn  || getLinkedInUgcAuthorUrn();
-  }
-
-  if (!effectiveRestAuthorUrn) {
-    throw new Error(
-      "Could not resolve LinkedIn author URN. Reconnect LinkedIn via the Connect button " +
-      "(ensure the LinkedIn app has 'Sign In with LinkedIn using OpenID Connect' or r_liteprofile scope enabled)."
-    );
-  }
-
-  // Warn if only alphanumeric (non-numeric) URN available — REST Posts may still reject it.
-  if (!detectedAuthor.memberUrn && !isOrgAuthor) {
-    console.warn(
-      "[LinkedIn] No numeric member URN available. Posts may fail. " +
-      "Reconnect LinkedIn with r_liteprofile scope to fix this permanently."
-    );
-  }
-
-  // 1 – Upload the birthday card image (fallback to text-only post on upload failure)
-  let imageUrn = null;
-  if (localImagePath) {
+  if (!personId) {
     try {
-      imageUrn = await uploadImageToLinkedIn(localImagePath, effectiveRestAuthorUrn, accessToken);
-    } catch (uploadError) {
-      console.warn(
-        `[LinkedIn] Image upload failed for ${name}. Falling back to text-only post: ${uploadError.message}`
+      const userInfo = await fetchLinkedInUserInfo(accessToken);
+      personId = userInfo.personId;
+
+      await Setting.findOneAndUpdate(
+        { key: LINKEDIN_SETTING_KEY },
+        {
+          $set: {
+            key: LINKEDIN_SETTING_KEY,
+            "linkedIn.personId": personId,
+            "linkedIn.accountName": userInfo.accountName || runtime.accountName || ""
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } catch (err) {
+      throw new Error(
+        `LinkedIn person ID is missing and auto-detection failed: ${compactMessage(err?.message || err) || "Unknown error"}`
       );
     }
   }
 
-  // 2 – Create the post
-  const postPayload = {
-    author:       effectiveRestAuthorUrn,
-    commentary,
-    visibility:   "PUBLIC",
-    distribution: {
-      feedDistribution:             "MAIN_FEED",
-      targetEntities:               [],
-      thirdPartyDistributionChannels: [],
-    },
-    lifecycleState:          "PUBLISHED",
-    isReshareDisabledByAuthor: false,
-  };
-
-  if (imageUrn) {
-    postPayload.content = {
-      media: {
-        id:    imageUrn,
-        title: `Happy Birthday ${name}!`,
-      },
-    };
+  if (!localImagePath) {
+    throw new Error("LinkedIn birthday post requires a generated image path.");
   }
 
-  const postBody = JSON.stringify(postPayload);
-
-  const postRes = await linkedInRestRequest({
-    method: "POST",
-    path: "/rest/posts",
+  const imageBuffer = fs.readFileSync(localImagePath);
+  const mimeType = localImagePath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+  const postResult = await postImageToLinkedIn({
     accessToken,
-    body: postBody,
-    extraHeaders: {
-      "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(postBody),
-    },
+    personId,
+    caption: commentary,
+    imageBuffer,
+    mimeType,
   });
 
-  if (postRes.status === 201) {
-    const liId = postRes.headers["x-restli-id"] || "(id unavailable)";
-    const mode = imageUrn ? "with image" : "without image";
-    console.log(`[LinkedIn] Birthday post for ${name} published (${mode}) → ${liId}`);
-  } else {
-    if (postRes.status === 403) {
-      if (!imageUrn) {
-        try {
-          let ugcAuthorUrn = getLinkedInUgcAuthorUrn();
-
-          // If author field is denied, retry with token owner identity from /v2/me.
-          if (isAuthorAccessDenied(postRes.body)) {
-            const detected = await detectLinkedInAuthorFromToken(accessToken);
-
-            // REST Posts retry uses personUrn (urn:li:person:)
-            if (detected.personUrn && detected.personUrn !== effectiveRestAuthorUrn) {
-              const retryPostBody = JSON.stringify({ ...postPayload, author: detected.personUrn });
-              const retryPostRes = await linkedInRestRequest({
-                method: "POST",
-                path: "/rest/posts",
-                accessToken,
-                body: retryPostBody,
-                extraHeaders: {
-                  "Content-Type": "application/json",
-                  "Content-Length": Buffer.byteLength(retryPostBody),
-                },
-              });
-
-              if (retryPostRes.status === 201) {
-                const liId = retryPostRes.headers["x-restli-id"] || "(id unavailable)";
-                console.log(
-                  `[LinkedIn] Birthday post for ${name} published (author auto-detected from token) → ${liId}`
-                );
-                return;
-              }
-
-              if (retryPostRes.status === 403) {
-                throw new Error(
-                  `LinkedIn author mismatch. Token owner appears to be ${detected.personUrn}. ` +
-                  `Set LINKEDIN_MEMBER_URN=${detected.memberUrn || detected.personUrn} and retry.`
-                );
-              }
-            }
-
-            // UGC fallback uses memberUrn (urn:li:member:)
-            if (detected.memberUrn) {
-              ugcAuthorUrn = detected.memberUrn;
-            }
-          }
-
-          const resolvedUgcAuthorUrn = ugcAuthorUrn || effectiveUgcAuthorUrn;
-          if (!resolvedUgcAuthorUrn) {
-            throw new Error(
-              "LinkedIn UGC fallback requires LINKEDIN_MEMBER_URN (urn:li:member:<numeric-id>) or LINKEDIN_ORG_URN for pages"
-            );
-          }
-
-          const fallback = await postTextToLinkedInUgc({
-            authorUrn: resolvedUgcAuthorUrn,
-            commentary,
-            accessToken,
-          });
-          console.log(`[LinkedIn] Birthday post for ${name} published (UGC text-only fallback) → ${fallback.id}`);
-          return;
-        } catch (fallbackErr) {
-          throw new Error(fallbackErr.message);
-        }
-      }
-
-      throw new Error(
-        `LinkedIn post request failed (403): ${compactMessage(postRes.body) || "No response body"}. ${buildLinkedInForbiddenHint()}`
-      );
-    }
-
-    throw new Error(`LinkedIn post request failed (${postRes.status}): ${postRes.body}`);
-  }
+  console.log(`[LinkedIn] Birthday post for ${name} published → ${postResult.postId || "(id unavailable)"}`);
 }

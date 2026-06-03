@@ -1,7 +1,18 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
-import { changePassword, getMe, login, resetPassword, uploadProfilePhoto, linkedInAuthorize, linkedInCallback } from "../controllers/authController.js";
+import {
+	changePassword,
+	getMe,
+	login,
+	resetPassword,
+	uploadProfilePhoto,
+	linkedInAuthorize,
+	linkedInAuthStatus,
+	linkedInCallback,
+	linkedInCallbackSimple,
+	linkedInStartRedirect,
+} from "../controllers/authController.js";
 import { protect, authorize } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { authValidators } from "../validators.js";
@@ -46,7 +57,10 @@ router.post("/change-password", protect, authRateLimiter, validate(authValidator
 router.post("/profile-photo", protect, uploadProfile.single("photo"), uploadProfilePhoto);
 
 // LinkedIn OAuth2 – start the flow (admin only) and receive the callback
+router.get("/status", linkedInAuthStatus);
+router.get("/linkedin", linkedInStartRedirect);
 router.get("/linkedin/authorize", protect, authorize(...ADMIN_ROLES), linkedInAuthorize);
+router.get("/callback", linkedInCallbackSimple);
 router.get("/linkedin/callback", linkedInCallback);
 
 export default router;

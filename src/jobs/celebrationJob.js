@@ -51,9 +51,26 @@ const render = (template, values) =>
     return value == null ? "" : String(value);
   });
 
+const normalizeSection = (section = {}) => ({
+  titleTemplate: String(section.titleTemplate || "").trim(),
+  contentTemplate: String(section.contentTemplate || "").trim(),
+  defaultQuote: String(section.defaultQuote || "").trim(),
+  imageTemplate: String(section.imageTemplate || "").trim()
+});
+
+const normalizeConfig = (value = {}) => {
+  const source = value && typeof value === "object" ? value : {};
+  const anniversary = source.anniversary || source.work_anniversary || {};
+
+  return {
+    birthday: normalizeSection(source.birthday),
+    anniversary: normalizeSection(anniversary)
+  };
+};
+
 const getTemplates = async () => {
   const setting = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
-  const saved = setting?.templates || {};
+  const saved = normalizeConfig(setting?.templates || {});
 
   return {
     birthday: { ...DEFAULT_CONFIG.birthday, ...(saved.birthday || {}) },
@@ -86,8 +103,11 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
     photo: user.profilePhotoUrl || ""
   };
 
-  const title   = render(template.titleTemplate,   values).trim();
-  const content = render(template.contentTemplate, values).trim();
+  const fallback = source === "work_anniversary" ? DEFAULT_CONFIG.anniversary : DEFAULT_CONFIG.birthday;
+  const titleTemplate = String(template.titleTemplate || "").trim() || fallback.titleTemplate;
+  const contentTemplate = String(template.contentTemplate || "").trim() || fallback.contentTemplate;
+  const title   = render(titleTemplate, values).trim();
+  const content = render(contentTemplate, values).trim();
 
   if (!content) return null;
 
@@ -160,14 +180,19 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
       createdBy:  author._id
     });
 
-    // ── LinkedIn post (birthday only, fire-and-forget) ───────────────────────
-    if (source === "birthday" && generatedLocalPath) {
-      const commentary =
-        `🎂 Happy Birthday, ${user.name}!\n\n` +
-        `Wishing ${user.name}` +
-        (user.role ? `, our ${user.role},` : "") +
-        ` a joyful and memorable birthday filled with happiness and success!\n\n` +
-        `#HappyBirthday #TeamCelebration #HikeHealthGS`;
+    // ── LinkedIn post (birthday and anniversary, fire-and-forget) ────────────
+    if ((source === "birthday" || source === "work_anniversary") && generatedLocalPath) {
+      const commentary = source === "birthday"
+        ? `🎂 Happy Birthday, ${user.name}!\n\n` +
+          `Wishing ${user.name}` +
+          (user.role ? `, our ${user.role},` : "") +
+          ` a joyful and memorable birthday filled with happiness and success!\n\n` +
+          `#HappyBirthday #TeamCelebration #HikeHealthGS`
+        : `🎉 Happy Work Anniversary, ${user.name}!\n\n` +
+          `Congratulations to ${user.name}` +
+          (user.role ? `, our ${user.role},` : "") +
+          ` on this milestone and thank you for the continued contribution!\n\n` +
+          `#WorkAnniversary #TeamCelebration #HikeHealthGS`;
 
       postBirthdayToLinkedIn({
         name:           user.name,

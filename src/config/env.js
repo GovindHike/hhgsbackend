@@ -65,6 +65,8 @@ export const env = {
   linkedInRefreshToken: process.env.LINKEDIN_REFRESH_TOKEN || "",
   linkedInRedirectUri:  process.env.LINKEDIN_REDIRECT_URI || "",
   linkedInOAuthScope:   process.env.LINKEDIN_OAUTH_SCOPE || "",
+  linkedInPersonId:     process.env.LINKEDIN_PERSON_ID || "",
+  linkedInAccountName:  process.env.LINKEDIN_ACCOUNT_NAME || "",
   linkedInMemberUrn:    process.env.LINKEDIN_MEMBER_URN || "",
   linkedInOrgUrn:       process.env.LINKEDIN_ORG_URN || "",
   linkedInApiVersion:   process.env.LINKEDIN_API_VERSION || "202504"

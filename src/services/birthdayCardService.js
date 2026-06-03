@@ -18,7 +18,7 @@ const ANNIVERSARY_TEMPLATE_PATH = path.join(__dirname, "..", "Work Anniversary.p
 //
 //  Photo circle — the large blue placeholder near the top-centre:
 //    centre-x ≈ 50 %   of image width   → 540 px
-//    centre-y ≈ 31.9 % of image height  → 344 px
+//    centre-y ≈ 32.0 % of image height  → 346 px
 //    radius   ≈ 17.1 % of image width   → 185 px
 //
 //  Empty white zone between the "Birthday" divider and the quote band:
@@ -33,7 +33,7 @@ const ANNIVERSARY_TEMPLATE_PATH = path.join(__dirname, "..", "Work Anniversary.p
 const LAYOUT = {
   photo: {
     cxRatio: 0.5,
-    cyRatio: 0.343,
+    cyRatio: 0.338,
     outerRadiusRatio: 0.163,
     insetRatio: 0.012,
   },

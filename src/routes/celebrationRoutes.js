@@ -57,7 +57,10 @@ router.post(
   validate(
     Joi.object({
       userId: Joi.string().required(),
-      type: Joi.string().valid("birthday", "anniversary").default("birthday")
+      type: Joi.string().valid("birthday", "anniversary").default("birthday"),
+      title: Joi.string().allow(""),
+      content: Joi.string().allow(""),
+      linkedInCommentary: Joi.string().allow("")
     })
   ),
   manualPost
