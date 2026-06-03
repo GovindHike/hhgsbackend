@@ -139,6 +139,7 @@ export const getShiftWindow = (dateKey, shiftSnapshot) => {
 
 export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) => {
   let totalMilliseconds = 0;
+  let systemLunchMilliseconds = 0;
   let totalLunchMinutes = 0;
   let totalPermissionMinutes = 0;
   let missedCheckoutCount = 0;
@@ -150,6 +151,9 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
       totalPermissionMinutes += session.permissionMinutes || 0;
       if (!session.isSystemLunchBreak) {
         totalMilliseconds += sessionMs;
+      } else {
+        // System lunch break overlaps the regular session's time span; deduct it
+        systemLunchMilliseconds += sessionMs;
       }
     }
 
@@ -158,7 +162,7 @@ export const computeAttendanceSummary = (sessions = [], shiftSnapshot = null) =>
     }
   });
 
-  const totalHours = Number((totalMilliseconds / (1000 * 60 * 60)).toFixed(2));
+  const totalHours = Number(((totalMilliseconds - systemLunchMilliseconds) / (1000 * 60 * 60)).toFixed(2));
   const expectedHours = Number(shiftSnapshot?.expectedHours || 0);
 
   return {
