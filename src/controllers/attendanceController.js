@@ -175,7 +175,12 @@ export const checkIn = async (req, res) => {
       staleSession.shiftSnapshot = shiftSnapshot;
     }
 
-    const { shiftEnd } = getShiftWindow(staleAttendance.date, shiftSnapshot);
+    const { shiftEnd, autoCheckoutAt } = getShiftWindow(staleAttendance.date, shiftSnapshot);
+    // Don't force-close a midnight-crossing session that hasn't reached its auto-checkout window yet.
+    // The user should still be able to manually check out (e.g. Shift 2 checking out at 00:30 AM).
+    if (!shiftEnd.isValid() || !dayjs().isAfter(autoCheckoutAt)) {
+      continue;
+    }
     if (shiftEnd.isValid()) {
       staleSession.checkOut = shiftEnd.toDate();
       staleSession.autoCheckoutApplied = true;
@@ -230,7 +235,19 @@ export const checkIn = async (req, res) => {
 };
 
 export const checkOut = async (req, res) => {
-  const attendance = await Attendance.findOne({ user: req.user._id, date: todayKey() });
+  let attendance = await Attendance.findOne({ user: req.user._id, date: todayKey() });
+
+  // Midnight-crossing shifts (e.g. Shift 2: 14:00–00:00) have a check-in dated yesterday
+  // but the active session extends past midnight into today.
+  if (!attendance?.sessions?.at(-1) || attendance.sessions.at(-1)?.checkOut) {
+    const yesterdayDate = dayjs().subtract(1, "day").format("YYYY-MM-DD");
+    const yesterdayAttendance = await Attendance.findOne({ user: req.user._id, date: yesterdayDate });
+    const yesterdayLastSession = yesterdayAttendance?.sessions?.at(-1);
+    if (yesterdayLastSession && !yesterdayLastSession.checkOut) {
+      attendance = yesterdayAttendance;
+    }
+  }
+
   const lastSession = attendance?.sessions?.at(-1);
 
   if (!lastSession || lastSession.checkOut) {
@@ -319,7 +336,14 @@ export const adminForceCheckout = async (req, res) => {
     return res.status(StatusCodes.BAD_REQUEST).json({ message: "Valid checkout time is required" });
   }
 
-  if (checkoutMoment.format("YYYY-MM-DD") !== attendance.date) {
+  const { shiftEnd } = getShiftWindow(attendance.date, sessionShiftSnapshot);
+  const isMidnightCrossing = shiftEnd.format("YYYY-MM-DD") !== attendance.date;
+  const checkoutDate = checkoutMoment.format("YYYY-MM-DD");
+  const validCheckoutDates = isMidnightCrossing
+    ? [attendance.date, shiftEnd.format("YYYY-MM-DD")]
+    : [attendance.date];
+
+  if (!validCheckoutDates.includes(checkoutDate)) {
     return res.status(StatusCodes.BAD_REQUEST).json({ message: "Checkout time must match the attendance date" });
   }
 
@@ -396,7 +420,17 @@ export const getAttendance = async (req, res) => {
 };
 
 export const getMyTodayAttendance = async (req, res) => {
-  const attendance = await Attendance.findOne({ user: req.user._id, date: todayKey() });
+  let attendance = await Attendance.findOne({ user: req.user._id, date: todayKey() });
+
+  // For midnight-crossing shifts, today's record may not exist yet but yesterday's has an active session.
+  if (!getActiveSession(attendance)) {
+    const yesterdayDate = dayjs().subtract(1, "day").format("YYYY-MM-DD");
+    const yesterdayAttendance = await Attendance.findOne({ user: req.user._id, date: yesterdayDate });
+    if (getActiveSession(yesterdayAttendance)) {
+      attendance = yesterdayAttendance;
+    }
+  }
+
   const policy = await getAttendancePolicy();
   const shift = await getUserShift(req);
   const hydratedAttendance = attendance ? await prepareAttendanceForResponse(attendance, shift) : null;
