@@ -475,7 +475,7 @@ export const getAttendanceSummary = async (req, res) => {
   const attendanceItems = await Attendance.find(filter)
     .populate({
       path: "user",
-      select: "name email team shift",
+      select: "name email employeeCode team shift",
       populate: { path: "team", select: "name" }
     })
     .sort({ date: 1 });

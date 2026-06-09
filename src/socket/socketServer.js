@@ -125,7 +125,8 @@ export const sendNotification = (userIds = [], payload) => {
   });
 
   if (typeof payload?.type === "string" && payload.type.startsWith("attendance_")) {
-    io.emit("attendance_updated", payload);
+    io.to("room:ADMIN").emit("attendance_updated", payload);
+    io.to("room:TEAM_LEAD").emit("attendance_updated", payload);
   }
 };
 

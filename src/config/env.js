@@ -69,5 +69,9 @@ export const env = {
   linkedInAccountName:  process.env.LINKEDIN_ACCOUNT_NAME || "",
   linkedInMemberUrn:    process.env.LINKEDIN_MEMBER_URN || "",
   linkedInOrgUrn:       process.env.LINKEDIN_ORG_URN || "",
-  linkedInApiVersion:   process.env.LINKEDIN_API_VERSION || "202504"
+  linkedInApiVersion:   process.env.LINKEDIN_API_VERSION || "202504",
+  // ── AI Content Studio ─────────────────────────────────────────────────────
+  openAiApiKey: process.env.OPENAI_API_KEY || "",
+  newsApiKey:   process.env.NEWS_API_KEY || "",
+  hfApiToken:   process.env.HF_API_TOKEN || "",
 };

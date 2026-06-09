@@ -14,6 +14,7 @@ import celebrationRoutes from "./celebrationRoutes.js";
 import mobileRoutes from "./mobileRoutes.js";
 import activityRoutes from "./activityRoutes.js";
 import linkedInPostRoutes from "./linkedInPostRoutes.js";
+import aiRoutes from "./aiRoutes.js";
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use("/settings", settingRoutes);
 router.use("/celebrations", celebrationRoutes);
 router.use("/mobile", mobileRoutes);
 router.use("/activity", activityRoutes);
+router.use("/ai", aiRoutes);
 router.use("/", linkedInPostRoutes);
 
 export default router;
