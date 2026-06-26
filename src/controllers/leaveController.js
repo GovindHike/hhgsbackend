@@ -190,7 +190,7 @@ export const getLeaves = async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const [leaves, total] = await Promise.all([
     Leave.find(filter)
-      .populate("user", "name email role leaveBalance")
+      .populate("user", "name email role leaveBalance profilePhotoUrl")
       .populate("team", "name")
       .populate("approvedBy", "name email")
       .sort({ createdAt: -1 })

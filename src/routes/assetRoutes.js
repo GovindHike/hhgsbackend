@@ -3,7 +3,7 @@ import { createAsset, deleteAsset, getAssets, recordAssetMovement, recordAssetCo
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { assetValidators } from "../validators.js";
-import { ADMIN_ROLES, EMPLOYEE_ROLES, ALL_ROLES } from "../utils/constants.js";
+import { ADMIN_ROLES, TEAM_LEAD_ROLES, EMPLOYEE_ROLES, ALL_ROLES } from "../utils/constants.js";
 
 const router = Router();
 
@@ -14,7 +14,7 @@ router.patch("/:id", authorize(...ADMIN_ROLES), validate(assetValidators.update)
 router.delete("/:id", authorize(...ADMIN_ROLES), deleteAsset);
 router.post(
   "/:id/movements",
-  authorize(...ADMIN_ROLES, ...EMPLOYEE_ROLES),
+  authorize(...ADMIN_ROLES, ...TEAM_LEAD_ROLES, ...EMPLOYEE_ROLES),
   validate(assetValidators.movement),
   recordAssetMovement
 );

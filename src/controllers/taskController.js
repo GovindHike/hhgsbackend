@@ -129,9 +129,9 @@ export const getTasks = async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
   const [tasks, total] = await Promise.all([
     Task.find(filter)
-      .populate("assignedTo", "name email")
-      .populate("assignedBy", "name email")
-      .populate("commands.sentBy", "name")
+      .populate("assignedTo", "name email profilePhotoUrl")
+      .populate("assignedBy", "name email profilePhotoUrl")
+      .populate("commands.sentBy", "name profilePhotoUrl")
       .sort({ taskDate: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -161,8 +161,8 @@ export const updateTaskStatus = async (req, res) => {
 
   task.status = req.body.status;
   await task.save();
-  await task.populate("assignedTo", "name email");
-  await task.populate("assignedBy", "name email");
+  await task.populate("assignedTo", "name email profilePhotoUrl");
+  await task.populate("assignedBy", "name email profilePhotoUrl");
 
   const recipients = [task.assignedTo?._id];
   if (task.assignedBy?._id && String(task.assignedBy._id) !== String(task.assignedTo?._id)) {
@@ -190,7 +190,7 @@ export const commandTask = async (req, res) => {
     throw new AppError("Command message is required", StatusCodes.BAD_REQUEST);
   }
 
-  const task = await Task.findById(req.params.id).populate("assignedTo", "name email").populate("assignedBy", "name email");
+  const task = await Task.findById(req.params.id).populate("assignedTo", "name email profilePhotoUrl").populate("assignedBy", "name email profilePhotoUrl");
   if (!task) {
     throw new AppError("Task not found", StatusCodes.NOT_FOUND);
   }
@@ -302,8 +302,8 @@ export const updateTask = async (req, res) => {
   }
 
   await task.save();
-  await task.populate("assignedTo", "name email");
-  await task.populate("assignedBy", "name email");
+  await task.populate("assignedTo", "name email profilePhotoUrl");
+  await task.populate("assignedBy", "name email profilePhotoUrl");
 
   res.status(StatusCodes.OK).json({ task });
 };
