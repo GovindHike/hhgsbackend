@@ -338,8 +338,7 @@ export const editCommand = async (req, res) => {
   if (!cmd) throw new AppError("Command not found", StatusCodes.NOT_FOUND);
 
   const isOwner = String(cmd.sentBy) === String(req.user._id);
-  const isPrivileged = TEAM_LEAD_ROLES.includes(req.user.role) || req.user.role === "admin";
-  if (!isOwner && !isPrivileged) {
+  if (!isOwner) {
     throw new AppError("You can only edit your own commands", StatusCodes.FORBIDDEN);
   }
 
@@ -356,12 +355,44 @@ export const deleteCommand = async (req, res) => {
   if (!cmd) throw new AppError("Command not found", StatusCodes.NOT_FOUND);
 
   const isOwner = String(cmd.sentBy) === String(req.user._id);
-  const isPrivileged = TEAM_LEAD_ROLES.includes(req.user.role) || req.user.role === "admin";
-  if (!isOwner && !isPrivileged) {
+  if (!isOwner) {
     throw new AppError("You can only delete your own commands", StatusCodes.FORBIDDEN);
   }
 
   cmd.deleteOne();
   await task.save();
   res.status(StatusCodes.OK).json({ message: "Command deleted" });
+};
+
+export const reactToCommand = async (req, res) => {
+  const { emoji } = req.body;
+  if (!emoji) throw new AppError("Emoji is required", StatusCodes.BAD_REQUEST);
+
+  const task = await Task.findById(req.params.id);
+  if (!task) throw new AppError("Task not found", StatusCodes.NOT_FOUND);
+
+  const cmd = task.commands.id(req.params.commandId);
+  if (!cmd) throw new AppError("Command not found", StatusCodes.NOT_FOUND);
+
+  const uid = String(req.user._id);
+  const users = (cmd.reactions.get(emoji) || []).map(String);
+  const idx = users.indexOf(uid);
+
+  if (idx === -1) {
+    users.push(uid);
+  } else {
+    users.splice(idx, 1);
+  }
+
+  if (users.length === 0) {
+    cmd.reactions.delete(emoji);
+  } else {
+    cmd.reactions.set(emoji, users);
+  }
+
+  await task.save();
+
+  const reactions = {};
+  cmd.reactions.forEach((v, k) => { reactions[k] = v.map(String); });
+  res.status(StatusCodes.OK).json({ reactions });
 };

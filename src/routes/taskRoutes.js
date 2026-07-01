@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createTask, commandTask, deleteTask, editCommand, deleteCommand, getTasks, updateTask, updateTaskStatus } from "../controllers/taskController.js";
+import { createTask, commandTask, deleteTask, editCommand, deleteCommand, reactToCommand, getTasks, updateTask, updateTaskStatus } from "../controllers/taskController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { taskValidators } from "../validators.js";
@@ -14,6 +14,7 @@ router.patch("/:id/status", validate(taskValidators.updateStatus), updateTaskSta
 router.patch("/:id", authorize(...ALL_ROLES), validate(taskValidators.update), updateTask);
 router.post("/:id/command", authorize(...ALL_ROLES), validate(taskValidators.command), commandTask);
 router.patch("/:id/command/:commandId", authorize(...ALL_ROLES), validate(taskValidators.editCommand), editCommand);
+router.patch("/:id/command/:commandId/react", authorize(...ALL_ROLES), reactToCommand);
 router.delete("/:id/command/:commandId", authorize(...ALL_ROLES), deleteCommand);
 router.delete("/:id", authorize(...ALL_ROLES), deleteTask);
 

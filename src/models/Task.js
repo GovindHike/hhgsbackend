@@ -4,7 +4,8 @@ import { TASK_STATUSES, TASK_CATEGORIES } from "../utils/constants.js";
 const commandSchema = new mongoose.Schema(
   {
     message: { type: String, required: true, trim: true },
-    sentBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+    sentBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    reactions: { type: Map, of: [mongoose.Schema.Types.ObjectId], default: {} }
   },
   { timestamps: true, _id: true }
 );

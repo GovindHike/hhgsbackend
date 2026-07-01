@@ -74,14 +74,18 @@ export const getAssets = async (req, res) => {
     ];
   }
 
-  const { page, limit, skip } = parsePagination(req.query);
   const sortBy = req.query.sortBy === "uniqueAssetId" ? "uniqueAssetId" : "createdAt";
   const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
   let assets;
   const total = await Asset.countDocuments(filter);
 
+  const fetchAll = isAdminRole(req.user.role) && Number(req.query.limit) > 100;
+  const { page, limit, skip } = fetchAll
+    ? { page: 1, limit: total || 1, skip: 0 }
+    : parsePagination(req.query);
+
   if (sortBy === "uniqueAssetId") {
-    assets = await Asset.aggregate([
+    const aggregatePipeline = [
       { $match: filter },
       {
         $addFields: {
@@ -91,10 +95,11 @@ export const getAssets = async (req, res) => {
       },
       { $sort: { uniqueAssetIdLength: sortOrder, uniqueAssetIdSortValue: sortOrder, _id: 1 } },
       { $skip: skip },
-      { $limit: limit },
       { $project: { uniqueAssetIdLength: 0, uniqueAssetIdSortValue: 0 } }
-    ]);
+    ];
+    if (!fetchAll) aggregatePipeline.splice(4, 0, { $limit: limit });
 
+    assets = await Asset.aggregate(aggregatePipeline);
     assets = await Asset.populate(assets, [
       { path: "assignedTo", select: "name email employeeCode" },
       { path: "history.assignedTo", select: "name email" },
@@ -103,16 +108,16 @@ export const getAssets = async (req, res) => {
       { path: "movements.recordedBy", select: "name email role" }
     ]);
   } else {
-    assets = await Asset.find(filter)
+    const query = Asset.find(filter)
       .populate("assignedTo", "name email employeeCode")
       .populate("history.assignedTo", "name email")
       .populate("history.assignedBy", "name email")
       .populate("movements.employee", "name email employeeCode")
       .populate("movements.recordedBy", "name email role")
       .sort({ createdAt: sortOrder })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+      .skip(skip);
+    if (!fetchAll) query.limit(limit);
+    assets = await query.lean();
   }
 
   res.status(StatusCodes.OK).json({ assets, ...buildPaginatedResponse({ items: assets, total, page, limit }) });
