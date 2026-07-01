@@ -35,7 +35,7 @@ const assetSchema = new mongoose.Schema(
     purchaseDate: { type: Date, default: null },
     vendor: { type: String, trim: true, default: "" },
     cost: { type: Number, default: 0 },
-    location: { type: String, trim: true, enum: ["Regional office", "new office"], default: "Regional office" },
+    location: { type: String, trim: true, enum: ["Regional office", "New office"], default: "Regional office" },
     serialNumber: { type: String, trim: true, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
     status: { type: String, enum: ASSET_STATUSES, default: "Available" },

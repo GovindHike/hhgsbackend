@@ -29,7 +29,7 @@ export const isEmployeeRole = (role = "") => EMPLOYEE_ROLES.includes(role);
 export const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "QA Needed", "Completed"];
 export const TASK_CATEGORIES = ["Bug/Issue", "Enhancement", "Feature"];
 export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected", "Cancelled"];
-export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Retired"];
+export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Repair", "Retired"];
 
 export const SHIFT_TYPES = ["Shift 1", "Shift 2"];
 
