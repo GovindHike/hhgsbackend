@@ -120,6 +120,7 @@ export const assetValidators = {
     location: Joi.string().valid("Regional office", "New office").default("Regional office"),
     serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
+    assignedGroup: Joi.string().valid("Admin department", "All Employees", "Hike team", "", null),
     status: Joi.string().valid(...ASSET_STATUSES).default("Available"),
     complaint: Joi.string().allow("", null),
     complaintDate: Joi.date().allow(null),
@@ -147,6 +148,7 @@ export const assetValidators = {
     location: Joi.string().valid("Regional office", "New office"),
     serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
+    assignedGroup: Joi.string().valid("Admin department", "All Employees", "Hike team", "", null),
     status: Joi.string().valid(...ASSET_STATUSES),
     complaint: Joi.string().allow("", null),
     complaintDate: Joi.date().allow(null),
@@ -173,6 +175,8 @@ export const taskValidators = {
     title: Joi.string().required(),
     description: Joi.string().allow("", null),
     projectName: Joi.string().allow("", null),
+    parentTask: Joi.string().allow(null, ""),
+    order: Joi.number().integer().min(0).default(0),
     assignedTo: Joi.string().allow("", null),
     taskDate: Joi.date().required(),
     dueDate: Joi.date().allow(null),
@@ -187,6 +191,8 @@ export const taskValidators = {
     title: Joi.string(),
     description: Joi.string().allow("", null),
     projectName: Joi.string().allow("", null),
+    parentTask: Joi.string().allow(null, ""),
+    order: Joi.number().integer().min(0),
     assignedTo: Joi.string().allow("", null),
     taskDate: Joi.date(),
     dueDate: Joi.date().allow(null),
@@ -198,6 +204,36 @@ export const taskValidators = {
   }),
   editCommand: Joi.object({
     message: Joi.string().trim().required()
+  }),
+  createSubtask: Joi.object({
+    title: Joi.string().required(),
+    description: Joi.string().allow("", null),
+    projectName: Joi.string().allow("", null),
+    assignedTo: Joi.string().allow("", null),
+    taskDate: Joi.date().allow(null),
+    dueDate: Joi.date().allow(null),
+    category: Joi.string().valid(...TASK_CATEGORIES),
+    status: Joi.string().valid(...TASK_STATUSES),
+    order: Joi.number().integer().min(0)
+  }),
+  updateSubtask: Joi.object({
+    title: Joi.string(),
+    description: Joi.string().allow("", null),
+    projectName: Joi.string().allow("", null),
+    assignedTo: Joi.string().allow("", null),
+    taskDate: Joi.date().allow(null),
+    dueDate: Joi.date().allow(null),
+    category: Joi.string().valid(...TASK_CATEGORIES),
+    status: Joi.string().valid(...TASK_STATUSES),
+    order: Joi.number().integer().min(0)
+  }).min(1),
+  reorderSubtasks: Joi.object({
+    orders: Joi.array().items(
+      Joi.object({
+        id: Joi.string().required(),
+        order: Joi.number().integer().required()
+      })
+    ).min(1).required()
   })
 };
 

@@ -14,6 +14,8 @@ const taskSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
+    parentTask: { type: mongoose.Schema.Types.ObjectId, ref: "Task", default: null, index: true },
+    order: { type: Number, default: 0, index: true },
     projectName: { type: String, trim: true, default: "General", index: true },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -21,10 +23,14 @@ const taskSchema = new mongoose.Schema(
     category: { type: String, enum: TASK_CATEGORIES, default: "Feature", index: true },
     taskDate: { type: Date, required: true, index: true, default: Date.now },
     dueDate: { type: Date, default: null, index: true },
+    completedAt: { type: Date, default: null },
     isDailyTask: { type: Boolean, default: false },
     commands: [commandSchema]
   },
   { timestamps: true }
 );
+
+taskSchema.index({ parentTask: 1, order: 1, createdAt: 1 });
+taskSchema.index({ assignedTo: 1, parentTask: 1, status: 1 });
 
 export const Task = mongoose.model("Task", taskSchema);

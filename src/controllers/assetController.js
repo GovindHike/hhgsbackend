@@ -13,9 +13,42 @@ const buildHistoryEntry = (assignedTo, assignedBy, note) => ({
   assignedAt: new Date()
 });
 
+const normalizeAssignedGroup = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.toLowerCase() === "admin department") return "Admin department";
+  if (raw.toLowerCase() === "all employees") return "All Employees";
+  if (raw.toLowerCase() === "hike team") return "Hike team";
+  return "";
+};
+
+const isRepairStatus = (status) => String(status || "").trim().toLowerCase() === "repair";
+
+const assertNonRepairAssetIdConflict = async ({ uniqueAssetId, status, excludeId = null }) => {
+  const filter = { uniqueAssetId };
+  if (excludeId && mongoose.isValidObjectId(excludeId)) {
+    filter._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
+  }
+
+  const existing = await Asset.find(filter).select("status").lean();
+  if (!existing.length) return;
+
+  const hasNonRepairDuplicate = existing.some((entry) => !isRepairStatus(entry.status));
+  if (!isRepairStatus(status) && hasNonRepairDuplicate) {
+    throw new AppError(
+      "Asset ID already exists for an active asset. Reuse is allowed only when the existing asset is in Repair status.",
+      StatusCodes.BAD_REQUEST
+    );
+  }
+};
+
 export const createAsset = async (req, res) => {
   const uniqueAssetId = req.body.uniqueAssetId?.trim() || (await buildAssetNumber(Asset));
   const assignedTo = req.body.assignedTo || null;
+  const assignedGroup = assignedTo ? "" : normalizeAssignedGroup(req.body.assignedGroup);
+  const nextStatus = assignedTo ? "Assigned" : (req.body.status || "Available");
+  await assertNonRepairAssetIdConflict({ uniqueAssetId, status: nextStatus });
+
   const initialComplaints = [];
   if (req.body.complaints?.length) {
     initialComplaints.push(...req.body.complaints);
@@ -40,7 +73,8 @@ export const createAsset = async (req, res) => {
     location: req.body.location || "Regional office",
     serialNumber: req.body.serialNumber || "",
     assignedTo,
-    status: assignedTo ? "Assigned" : req.body.status || "Available",
+    assignedGroup,
+    status: nextStatus,
     complaint: req.body.complaint || "",
     complaintDate: req.body.complaintDate || null,
     recoverDate: req.body.recoverDate || null,
@@ -58,6 +92,16 @@ export const getAssets = async (req, res) => {
     filter.assignedTo = req.user._id;
   } else if (req.query.assignedTo === "__UNASSIGNED__") {
     filter.assignedTo = null;
+    filter.assignedGroup = "";
+  } else if (req.query.assignedTo === "__ADMIN_DEPARTMENT__") {
+    filter.assignedTo = null;
+    filter.assignedGroup = "Admin department";
+  } else if (req.query.assignedTo === "__ALL_EMPLOYEES__") {
+    filter.assignedTo = null;
+    filter.assignedGroup = "All Employees";
+  } else if (req.query.assignedTo === "__HIKE_TEAM__") {
+    filter.assignedTo = null;
+    filter.assignedGroup = "Hike team";
   } else if (req.query.assignedTo) {
     if (!mongoose.isValidObjectId(req.query.assignedTo)) {
       throw new AppError("Invalid assigned user filter", StatusCodes.BAD_REQUEST);
@@ -130,21 +174,39 @@ export const updateAsset = async (req, res) => {
   }
 
   const previousAssignedTo = String(asset.assignedTo || "");
-  const nextAssignedTo = String(req.body.assignedTo || "");
+  const assignedGroupPayloadProvided = Object.prototype.hasOwnProperty.call(req.body, "assignedGroup");
+  const assignedToPayloadProvided = Object.prototype.hasOwnProperty.call(req.body, "assignedTo");
+  const nextAssignedToRaw = assignedToPayloadProvided ? (req.body.assignedTo || null) : asset.assignedTo;
+  const nextAssignedGroup = nextAssignedToRaw
+    ? ""
+    : (assignedGroupPayloadProvided ? normalizeAssignedGroup(req.body.assignedGroup) : asset.assignedGroup || "");
+  const nextAssignedTo = String(nextAssignedToRaw || "");
+  const nextUniqueAssetId = (req.body.uniqueAssetId ?? asset.uniqueAssetId)?.trim?.() || asset.uniqueAssetId;
+  const assignmentChanged = previousAssignedTo !== nextAssignedTo;
+  const nextStatus = assignmentChanged
+    ? (nextAssignedToRaw ? "Assigned" : (req.body.status || "Available"))
+    : (req.body.status ?? asset.status);
+
+  await assertNonRepairAssetIdConflict({
+    uniqueAssetId: nextUniqueAssetId,
+    status: nextStatus,
+    excludeId: asset._id
+  });
 
   Object.assign(asset, {
     name: req.body.name || req.body.description || asset.name,
     type: req.body.type || req.body.category || asset.type,
     category: req.body.category || req.body.type || asset.category,
     description: req.body.description ?? asset.description,
-    uniqueAssetId: req.body.uniqueAssetId ?? asset.uniqueAssetId,
+    uniqueAssetId: nextUniqueAssetId,
     purchaseDate: req.body.purchaseDate ?? asset.purchaseDate,
     vendor: req.body.vendor ?? asset.vendor,
     cost: req.body.cost !== undefined ? Number(req.body.cost) : asset.cost,
     location: req.body.location ?? asset.location,
     serialNumber: req.body.serialNumber ?? asset.serialNumber,
-    assignedTo: req.body.assignedTo ?? asset.assignedTo,
-    status: req.body.status ?? asset.status,
+    assignedTo: nextAssignedToRaw,
+    assignedGroup: nextAssignedGroup,
+    status: nextStatus,
     complaint: req.body.complaint ?? asset.complaint,
     complaintDate: req.body.complaintDate ?? asset.complaintDate,
     recoverDate: req.body.recoverDate ?? asset.recoverDate,
@@ -161,14 +223,13 @@ export const updateAsset = async (req, res) => {
     });
   }
 
-  if (previousAssignedTo !== nextAssignedTo || req.body.note) {
+  if (assignmentChanged || req.body.note) {
     const currentHistory = asset.history.at(-1);
-    if (currentHistory && !currentHistory.unassignedAt && previousAssignedTo !== nextAssignedTo) {
+    if (currentHistory && !currentHistory.unassignedAt && assignmentChanged) {
       currentHistory.unassignedAt = new Date();
     }
 
-    asset.history.push(buildHistoryEntry(req.body.assignedTo || null, req.user._id, req.body.note));
-    asset.status = req.body.assignedTo ? "Assigned" : req.body.status || "Available";
+    asset.history.push(buildHistoryEntry(nextAssignedToRaw || null, req.user._id, req.body.note));
   }
 
   await asset.save();

@@ -2,6 +2,7 @@ import cron from "node-cron";
 import dayjs from "dayjs";
 import { env } from "../config/env.js";
 import { Attendance } from "../models/Attendance.js";
+import { Notification } from "../models/Notification.js";
 import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
 import { createNotification } from "../services/notificationService.js";
@@ -10,6 +11,9 @@ import { DEFAULT_ATTENDANCE_POLICY, getShiftWindow, normalizeAttendancePolicy, r
 const ATTENDANCE_POLICY_KEY = "attendance_policy";
 const CHECKIN_REMINDER_TYPE = "attendance_shift_start_checkin_reminder";
 const CHECKOUT_REMINDER_TYPE = "attendance_checkout_reminder";
+const REMINDER_START_DELAY_MINUTES = 15;
+const REMINDER_INTERVAL_MINUTES = 15;
+const MAX_SHIFT_REMINDERS = 3;
 
 const RETURN_REMINDER_RULES = {
   Lunch: { minutes: 60, label: "lunch", type: "attendance_lunch_return_reminder" },
@@ -43,6 +47,44 @@ const isWorkingDay = (dateKey, policy) => {
 };
 
 const getRecordKey = (userId, dateKey) => `${String(userId)}::${dateKey}`;
+const getReminderKey = (userId, type) => `${String(userId)}::${type}`;
+
+const buildReminderIndex = (notifications = []) => {
+  const reminderIndex = new Map();
+
+  for (const notification of notifications) {
+    const recipients = Array.isArray(notification?.recipients) ? notification.recipients : [];
+    for (const recipient of recipients) {
+      const key = getReminderKey(recipient, notification.type);
+      const current = reminderIndex.get(key) || [];
+      current.push(dayjs(notification.createdAt));
+      reminderIndex.set(key, current);
+    }
+  }
+
+  for (const [key, timestamps] of reminderIndex.entries()) {
+    reminderIndex.set(
+      key,
+      timestamps
+        .filter((timestamp) => timestamp.isValid())
+        .sort((left, right) => left.valueOf() - right.valueOf())
+    );
+  }
+
+  return reminderIndex;
+};
+
+const countRemindersInWindow = ({ reminderIndex, userId, type, windowStart, windowEnd }) => {
+  const timestamps = reminderIndex.get(getReminderKey(userId, type)) || [];
+  return timestamps.reduce((count, timestamp) => {
+    if (timestamp.isBefore(windowStart) || !timestamp.isBefore(windowEnd)) {
+      return count;
+    }
+    return count + 1;
+  }, 0);
+};
+
+const getNextReminderAt = (anchor, sentCount) => anchor.add(REMINDER_START_DELAY_MINUTES + sentCount * REMINDER_INTERVAL_MINUTES, "minute");
 
 const sendPush = async ({ userId, title, body, type, redirectUrl = "/attendance" }) => {
   await createNotification({
@@ -90,6 +132,16 @@ export const startPushNotificationJob = () => {
         date: { $in: [todayKey, yesterdayKey] }
       }).lean();
 
+      const reminderHistory = await Notification.find({
+        recipients: { $in: userIds },
+        type: { $in: [CHECKIN_REMINDER_TYPE, CHECKOUT_REMINDER_TYPE] },
+        createdAt: { $gte: now.subtract(2, "day").startOf("day").toDate() }
+      })
+        .select("recipients type createdAt")
+        .lean();
+
+      const reminderIndex = buildReminderIndex(reminderHistory);
+
       const attendanceByUserAndDate = new Map(
         attendanceRecords.map((record) => [getRecordKey(record.user, record.date), record])
       );
@@ -112,7 +164,7 @@ export const startPushNotificationJob = () => {
       for (const user of users) {
         const shift = user.shift || "Shift 1";
 
-        // 1) During shift: remind every 2 min if user has not checked in at all yet.
+        // 1) During shift: if user has not checked in, remind at +15, +30 and +45 minutes from shift start.
         if (isWorkingDay(todayKey, policy)) {
           const todayShiftSnapshot = resolveShiftSnapshot({ shift, dateKey: todayKey, policy });
           const { shiftStart: todayShiftStart, shiftEnd: todayShiftEnd } = getShiftWindow(todayKey, todayShiftSnapshot);
@@ -120,12 +172,30 @@ export const startPushNotificationJob = () => {
           const todayAttendance = attendanceByUserAndDate.get(getRecordKey(user._id, todayKey));
 
           if (nowInShiftToday && (!todayAttendance || !Array.isArray(todayAttendance.sessions) || !todayAttendance.sessions.length)) {
-            await sendOncePerTick({
+            const checkinRemindersSent = countRemindersInWindow({
+              reminderIndex,
               userId: user._id,
-              title: "Check-in reminder",
-              body: "Your shift has started. Please check in.",
-              type: CHECKIN_REMINDER_TYPE
+              type: CHECKIN_REMINDER_TYPE,
+              windowStart: todayShiftStart,
+              windowEnd: todayShiftEnd
             });
+
+            const nextCheckinReminderAt = getNextReminderAt(todayShiftStart, checkinRemindersSent);
+            if (checkinRemindersSent < MAX_SHIFT_REMINDERS && !now.isBefore(nextCheckinReminderAt)) {
+              const sent = await sendOncePerTick({
+                userId: user._id,
+                title: "Check-in reminder",
+                body: "Your shift has started. Please check in.",
+                type: CHECKIN_REMINDER_TYPE
+              });
+
+              if (sent) {
+                const key = getReminderKey(user._id, CHECKIN_REMINDER_TYPE);
+                const timestamps = reminderIndex.get(key) || [];
+                timestamps.push(now);
+                reminderIndex.set(key, timestamps);
+              }
+            }
           }
         }
 
@@ -167,12 +237,30 @@ export const startPushNotificationJob = () => {
           }
 
           if (afterShiftBeforeAutoCheckout && activeSession) {
-            await sendOncePerTick({
+            const checkoutRemindersSent = countRemindersInWindow({
+              reminderIndex,
               userId: user._id,
-              title: "Checkout reminder",
-              body: "Are you there? Your shift is over, please check out.",
-              type: CHECKOUT_REMINDER_TYPE
+              type: CHECKOUT_REMINDER_TYPE,
+              windowStart: shiftEnd,
+              windowEnd: autoCheckoutAt
             });
+
+            const nextCheckoutReminderAt = getNextReminderAt(shiftEnd, checkoutRemindersSent);
+            if (checkoutRemindersSent < MAX_SHIFT_REMINDERS && !now.isBefore(nextCheckoutReminderAt)) {
+              const sent = await sendOncePerTick({
+                userId: user._id,
+                title: "Checkout reminder",
+                body: "Are you there? Your shift is over, please check out.",
+                type: CHECKOUT_REMINDER_TYPE
+              });
+
+              if (sent) {
+                const key = getReminderKey(user._id, CHECKOUT_REMINDER_TYPE);
+                const timestamps = reminderIndex.get(key) || [];
+                timestamps.push(now);
+                reminderIndex.set(key, timestamps);
+              }
+            }
           }
         }
       }
