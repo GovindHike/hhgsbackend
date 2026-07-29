@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { startAutoCheckoutJob } from "./jobs/autoCheckoutJob.js";
 import { startDailyReportJob } from "./jobs/dailyReportJob.js";
 import { migrateLeaveBalance } from "./jobs/migrateLeaveBalance.js";
+import { migrateAnnouncementMedia } from "./jobs/migrateAnnouncementMedia.js";
 import { resetLeaveBalances, startLeaveResetJob } from "./jobs/leaveResetJob.js";
 import { startCelebrationJob } from "./jobs/celebrationJob.js";
 import { startPushNotificationJob } from "./jobs/pushNotificationJob.js";
@@ -14,6 +15,7 @@ import { initializeWebPush } from "./services/webPushService.js";
 const startServer = async () => {
   await connectDatabase();
   await migrateLeaveBalance();
+  await migrateAnnouncementMedia();
   await resetLeaveBalances();
   const app = createApp();
   const httpServer = http.createServer(app);

@@ -1,4 +1,3 @@
-import path from "path";
 import { StatusCodes } from "http-status-codes";
 import { env } from "../config/env.js";
 import { Announcement } from "../models/Announcement.js";
@@ -6,10 +5,14 @@ import { Setting } from "../models/Setting.js";
 import { User } from "../models/User.js";
 import { generateBirthdayCard, generateAnniversaryCard } from "../services/birthdayCardService.js";
 import { getLinkedInRuntimeConfig, postBirthdayToLinkedIn } from "../services/linkedInService.js";
+import { buildMediaUrl, getRequestBaseUrl, saveMediaAsset } from "../services/mediaService.js";
 import { createNotification } from "../services/notificationService.js";
 import { runCelebrationAnnouncementsForDate } from "../jobs/celebrationJob.js";
 
 const CELEBRATION_KEY = "celebration_templates";
+
+// Admin card previews are throw-away renders — MongoDB expires them automatically.
+const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_CONFIG = {
   birthday: {
@@ -65,8 +68,6 @@ const getSystemAuthor = async () => {
     return null;
   }
 };
-
-const getRequestBaseUrl = (req) => `${req.protocol}://${req.get("host")}`;
 
 export const getCelebrationTemplates = async (_req, res) => {
   const setting = await Setting.findOne({ key: CELEBRATION_KEY }).lean();
@@ -150,17 +151,13 @@ export const previewCard = async (req, res) => {
       name:            user.name,
       role:            user.role || "",
       profilePhotoUrl: user.profilePhotoUrl || "",
-      joiningDate:     user.joiningDate,
-      outputDir:       path.join(env.uploadsDir, "announcements"),
-      baseUrl:         getRequestBaseUrl(req)
+      joiningDate:     user.joiningDate
     });
   } else {
     card = await generateBirthdayCard({
       name:            user.name,
       role:            user.role || "",
-      profilePhotoUrl: user.profilePhotoUrl || "",
-      outputDir:       path.join(env.uploadsDir, "announcements"),
-      baseUrl:         getRequestBaseUrl(req)
+      profilePhotoUrl: user.profilePhotoUrl || ""
     });
   }
 
@@ -168,8 +165,17 @@ export const previewCard = async (req, res) => {
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: "Card generation failed" });
   }
 
+  const asset = await saveMediaAsset({
+    buffer:    card.buffer,
+    mime:      card.mime,
+    filename:  card.filename,
+    category:  "preview",
+    createdBy: req.user?._id || null,
+    expiresAt: new Date(Date.now() + PREVIEW_TTL_MS)
+  });
+
   return res.status(StatusCodes.OK).json({
-    url:             card.url,
+    url:             buildMediaUrl(getRequestBaseUrl(req), asset._id),
     name:            user.name,
     role:            user.role || "",
     profilePhotoUrl: user.profilePhotoUrl || "",
@@ -219,8 +225,8 @@ export const manualPost = async (req, res) => {
     return res.status(StatusCodes.BAD_REQUEST).json({ message: "Template content is empty — please save a content template first." });
   }
 
-  let media              = [];
-  let generatedLocalPath = null;
+  let media       = [];
+  let generatedCard = null;
 
   const baseUrl = getRequestBaseUrl(req);
 
@@ -229,24 +235,28 @@ export const manualPost = async (req, res) => {
       ? await generateBirthdayCard({
           name:            user.name,
           role:            user.role || "",
-          profilePhotoUrl: user.profilePhotoUrl || "",
-          outputDir:       path.join(env.uploadsDir, "announcements"),
-          baseUrl:         baseUrl
+          profilePhotoUrl: user.profilePhotoUrl || ""
         })
       : user.joiningDate
         ? await generateAnniversaryCard({
             name:            user.name,
             role:            user.role || "",
             profilePhotoUrl: user.profilePhotoUrl || "",
-            joiningDate:     user.joiningDate,
-            outputDir:       path.join(env.uploadsDir, "announcements"),
-            baseUrl:         baseUrl
+            joiningDate:     user.joiningDate
           })
         : null;
 
     if (card) {
-      media              = [{ type: "image", url: card.url }];
-      generatedLocalPath = card.localPath;
+      const asset = await saveMediaAsset({
+        buffer:    card.buffer,
+        mime:      card.mime,
+        filename:  card.filename,
+        category:  "celebration",
+        createdBy: req.user?._id || null
+      });
+
+      media         = [{ type: "image", url: buildMediaUrl(baseUrl, asset._id) }];
+      generatedCard = card;
     } else if (type === "anniversary") {
       const imageUrl = renderTpl(template.imageTemplate, values).trim();
       if (imageUrl && !imageUrl.includes("{{")) {
@@ -278,7 +288,7 @@ export const manualPost = async (req, res) => {
   });
 
   let linkedInError = null;
-  if ((source === "birthday" || source === "work_anniversary") && generatedLocalPath) {
+  if ((source === "birthday" || source === "work_anniversary") && generatedCard) {
     const fallbackCommentary = source === "birthday"
       ? `🎂 Happy Birthday, ${user.name}!\n\n` +
         `Wishing ${user.name}${user.role ? `, our ${user.role},` : ""} a joyful birthday!\n\n` +
@@ -289,10 +299,11 @@ export const manualPost = async (req, res) => {
     const commentary = String(customLinkedInCommentary || "").trim() || fallbackCommentary;
     try {
       await postBirthdayToLinkedIn({
-        name:           user.name,
-        role:           user.role || "",
+        name:        user.name,
+        role:        user.role || "",
         commentary,
-        localImagePath: generatedLocalPath
+        imageBuffer: generatedCard.buffer,
+        imageMime:   generatedCard.mime
       });
     } catch (err) {
       console.error("[LinkedIn] manual post error:", err.message);

@@ -1,5 +1,5 @@
 import Joi from "joi";
-import { ASSET_STATUSES, LEAVE_STATUSES, ROLES, SHIFT_TYPES, TASK_STATUSES, TASK_CATEGORIES } from "./utils/constants.js";
+import { ASSET_STATUSES, LEAVE_STATUSES, REGISTER_FIELD_TYPES, ROLES, SHIFT_TYPES, TASK_STATUSES, TASK_CATEGORIES } from "./utils/constants.js";
 
 const emailRule = Joi.string().email({ tlds: { allow: false } });
 
@@ -104,6 +104,7 @@ export const assetValidators = {
     name: Joi.string().allow("", null),
     type: Joi.string().allow("", null),
     category: Joi.string().allow("", null),
+    subcategory: Joi.string().allow("", null),
     description: Joi.string().allow("", null),
     uniqueAssetId: Joi.string().required(),
     complaints: Joi.array().items(
@@ -116,7 +117,12 @@ export const assetValidators = {
     ),
     purchaseDate: Joi.date().allow(null),
     vendor: Joi.string().allow("", null),
+    invoiceNumber: Joi.string().allow("", null),
     cost: Joi.number().precision(2).min(0).default(0),
+    warrantyStartDate: Joi.date().allow(null),
+    warrantyExpiryDate: Joi.date().allow(null),
+    warrantyProvider: Joi.string().allow("", null),
+    warrantyDetails: Joi.string().allow("", null),
     location: Joi.string().valid("Regional office", "New office").default("Regional office"),
     serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
@@ -132,6 +138,7 @@ export const assetValidators = {
     name: Joi.string(),
     type: Joi.string(),
     category: Joi.string().allow("", null),
+    subcategory: Joi.string().allow("", null),
     description: Joi.string().allow("", null),
     uniqueAssetId: Joi.string(),
     complaints: Joi.array().items(
@@ -144,7 +151,12 @@ export const assetValidators = {
     ),
     purchaseDate: Joi.date().allow(null),
     vendor: Joi.string().allow("", null),
+    invoiceNumber: Joi.string().allow("", null),
     cost: Joi.number().precision(2).min(0),
+    warrantyStartDate: Joi.date().allow(null),
+    warrantyExpiryDate: Joi.date().allow(null),
+    warrantyProvider: Joi.string().allow("", null),
+    warrantyDetails: Joi.string().allow("", null),
     location: Joi.string().valid("Regional office", "New office"),
     serialNumber: Joi.string().allow("", null),
     assignedTo: Joi.string().allow("", null),
@@ -280,5 +292,39 @@ export const notificationValidators = {
   }),
   unregisterPushToken: Joi.object({
     token: Joi.string().required()
+  })
+};
+
+const registerFieldValidator = Joi.object({
+  key: Joi.string().trim().allow("", null),
+  label: Joi.string().trim().required(),
+  type: Joi.string().valid(...REGISTER_FIELD_TYPES).default("text"),
+  required: Joi.boolean().default(false),
+  options: Joi.array().items(Joi.string().trim()).default([]),
+  placeholder: Joi.string().trim().allow("", null),
+  helpText: Joi.string().trim().allow("", null),
+  showInTable: Joi.boolean().default(true),
+  order: Joi.number()
+});
+
+export const registerValidators = {
+  create: Joi.object({
+    name: Joi.string().trim().allow("", null),
+    description: Joi.string().trim().allow("", null),
+    color: Joi.string().trim().allow("", null),
+    templateKey: Joi.string().trim().allow("", null),
+    isActive: Joi.boolean(),
+    fields: Joi.array().items(registerFieldValidator).default([])
+  }),
+  update: Joi.object({
+    name: Joi.string().trim(),
+    description: Joi.string().trim().allow("", null),
+    color: Joi.string().trim().allow("", null),
+    isActive: Joi.boolean(),
+    sortOrder: Joi.number(),
+    fields: Joi.array().items(registerFieldValidator)
+  }).min(1),
+  entry: Joi.object({
+    data: Joi.object().unknown(true).required()
   })
 };

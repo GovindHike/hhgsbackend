@@ -1,5 +1,4 @@
 import cron from "node-cron";
-import path from "path";
 import { env } from "../config/env.js";
 import { Announcement } from "../models/Announcement.js";
 import { Setting } from "../models/Setting.js";
@@ -7,6 +6,7 @@ import { User } from "../models/User.js";
 import { createNotification } from "../services/notificationService.js";
 import { generateBirthdayCard, generateAnniversaryCard } from "../services/birthdayCardService.js";
 import { postBirthdayToLinkedIn } from "../services/linkedInService.js";
+import { buildMediaUrl, saveMediaAsset } from "../services/mediaService.js";
 
 const CELEBRATION_KEY = "celebration_templates";
 
@@ -111,9 +111,9 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
 
   if (!content) return null;
 
-  // ── Birthday card: generate a composed PNG from the template image ────────
-  let media              = [];
-  let generatedLocalPath = null;
+  // ── Birthday card: compose a PNG from the template and store it in MongoDB ─
+  let media         = [];
+  let generatedCard = null;
 
   if (source === "birthday" || source === "work_anniversary") {
     const card = source === "birthday"
@@ -121,21 +121,24 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
           name:            user.name,
           role:            user.role || "",
           profilePhotoUrl: user.profilePhotoUrl || "",
-          outputDir:       path.join(env.uploadsDir, "announcements"),
-          baseUrl:         env.backendUrl,
         })
       : await generateAnniversaryCard({
           name:            user.name,
           role:            user.role || "",
           profilePhotoUrl: user.profilePhotoUrl || "",
           joiningDate:     user.joiningDate,
-          outputDir:       path.join(env.uploadsDir, "announcements"),
-          baseUrl:         env.backendUrl,
         });
 
     if (card) {
-      media              = [{ type: "image", url: card.url }];
-      generatedLocalPath = card.localPath;
+      const asset = await saveMediaAsset({
+        buffer:   card.buffer,
+        mime:     card.mime,
+        filename: card.filename,
+        category: "celebration"
+      });
+
+      media         = [{ type: "image", url: buildMediaUrl(env.backendUrl, asset._id) }];
+      generatedCard = card;
     }
   }
 
@@ -181,7 +184,7 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
     });
 
     // ── LinkedIn post (birthday and anniversary, fire-and-forget) ────────────
-    if ((source === "birthday" || source === "work_anniversary") && generatedLocalPath) {
+    if ((source === "birthday" || source === "work_anniversary") && generatedCard) {
       const commentary = source === "birthday"
         ? `🎂 Happy Birthday, ${user.name}!\n\n` +
           `Wishing ${user.name}` +
@@ -195,10 +198,11 @@ const createCelebrationAnnouncement = async ({ source, user, template, onDate, s
           `#WorkAnniversary #TeamCelebration #HikeHealthGS`;
 
       postBirthdayToLinkedIn({
-        name:           user.name,
-        role:           user.role || "",
+        name:        user.name,
+        role:        user.role || "",
         commentary,
-        localImagePath: generatedLocalPath,
+        imageBuffer: generatedCard.buffer,
+        imageMime:   generatedCard.mime,
       }).catch((err) => console.error("[LinkedIn] fire-and-forget error:", err.message));
     }
 

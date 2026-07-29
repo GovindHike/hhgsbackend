@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createAsset, deleteAsset, getAssets, recordAssetMovement, recordAssetComplaint, updateAsset } from "../controllers/assetController.js";
+import { createAsset, deleteAsset, getAssetAuditLogs, getAssets, recordAssetMovement, recordAssetComplaint, updateAsset } from "../controllers/assetController.js";
 import { authorize, protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { assetValidators } from "../validators.js";
@@ -9,6 +9,7 @@ const router = Router();
 
 router.use(protect);
 router.get("/", authorize(...ALL_ROLES), getAssets);
+router.get("/history", authorize(...ADMIN_ROLES), getAssetAuditLogs);
 router.post("/", authorize(...ADMIN_ROLES), validate(assetValidators.create), createAsset);
 router.patch("/:id", authorize(...ADMIN_ROLES), validate(assetValidators.update), updateAsset);
 router.delete("/:id", authorize(...ADMIN_ROLES), deleteAsset);

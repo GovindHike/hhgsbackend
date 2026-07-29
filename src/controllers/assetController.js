@@ -1,10 +1,17 @@
 import mongoose from "mongoose";
 import { StatusCodes } from "http-status-codes";
 import { Asset } from "../models/Asset.js";
+import { AssetAuditLog } from "../models/AssetAuditLog.js";
 import { buildAssetNumber } from "../utils/asset.js";
 import { AppError } from "../utils/AppError.js";
 import { isAdminRole } from "../utils/constants.js";
 import { buildPaginatedResponse, parsePagination } from "../utils/query.js";
+import {
+  buildAssetSnapshot,
+  diffAssetSnapshots,
+  recordAssetAudit,
+  resolveAssignedLabel
+} from "../utils/assetAudit.js";
 
 const buildHistoryEntry = (assignedTo, assignedBy, note) => ({
   assignedTo: assignedTo || null,
@@ -65,11 +72,17 @@ export const createAsset = async (req, res) => {
     name: req.body.name || req.body.description || uniqueAssetId,
     type: req.body.type || req.body.category || "General",
     category: req.body.category || req.body.type || "",
+    subcategory: req.body.subcategory || "",
     description: req.body.description || "",
     uniqueAssetId,
     purchaseDate: req.body.purchaseDate || null,
     vendor: req.body.vendor || "",
+    invoiceNumber: req.body.invoiceNumber || "",
     cost: Number(req.body.cost || 0),
+    warrantyStartDate: req.body.warrantyStartDate || null,
+    warrantyExpiryDate: req.body.warrantyExpiryDate || null,
+    warrantyProvider: req.body.warrantyProvider || "",
+    warrantyDetails: req.body.warrantyDetails || "",
     location: req.body.location || "Regional office",
     serialNumber: req.body.serialNumber || "",
     assignedTo,
@@ -81,6 +94,16 @@ export const createAsset = async (req, res) => {
     complaints: initialComplaints,
     remarks: req.body.remarks || "",
     history: [buildHistoryEntry(assignedTo, req.user._id, req.body.note || "Asset created")]
+  });
+
+  const assignedLabel = await resolveAssignedLabel(asset.assignedTo, asset.assignedGroup);
+  await recordAssetAudit({
+    asset,
+    action: "CREATE",
+    user: req.user,
+    summary: `Created asset ${asset.uniqueAssetId}`,
+    note: req.body.note || "",
+    changes: diffAssetSnapshots({}, buildAssetSnapshot(asset, assignedLabel))
   });
 
   res.status(StatusCodes.CREATED).json({ asset });
@@ -111,10 +134,14 @@ export const getAssets = async (req, res) => {
   }
   if (req.query.status) filter.status = req.query.status;
   if (req.query.type) filter.type = req.query.type;
+  if (req.query.category) filter.category = req.query.category;
+  if (req.query.subcategory) filter.subcategory = req.query.subcategory;
   if (req.query.search) {
     filter.$or = [
       { name: { $regex: req.query.search, $options: "i" } },
-      { uniqueAssetId: { $regex: req.query.search, $options: "i" } }
+      { uniqueAssetId: { $regex: req.query.search, $options: "i" } },
+      { invoiceNumber: { $regex: req.query.search, $options: "i" } },
+      { serialNumber: { $regex: req.query.search, $options: "i" } }
     ];
   }
 
@@ -173,6 +200,11 @@ export const updateAsset = async (req, res) => {
     throw new AppError("Asset not found", StatusCodes.NOT_FOUND);
   }
 
+  const beforeSnapshot = buildAssetSnapshot(
+    asset,
+    await resolveAssignedLabel(asset.assignedTo, asset.assignedGroup)
+  );
+
   const previousAssignedTo = String(asset.assignedTo || "");
   const assignedGroupPayloadProvided = Object.prototype.hasOwnProperty.call(req.body, "assignedGroup");
   const assignedToPayloadProvided = Object.prototype.hasOwnProperty.call(req.body, "assignedTo");
@@ -197,11 +229,17 @@ export const updateAsset = async (req, res) => {
     name: req.body.name || req.body.description || asset.name,
     type: req.body.type || req.body.category || asset.type,
     category: req.body.category || req.body.type || asset.category,
+    subcategory: req.body.subcategory ?? asset.subcategory,
     description: req.body.description ?? asset.description,
     uniqueAssetId: nextUniqueAssetId,
     purchaseDate: req.body.purchaseDate ?? asset.purchaseDate,
     vendor: req.body.vendor ?? asset.vendor,
+    invoiceNumber: req.body.invoiceNumber ?? asset.invoiceNumber,
     cost: req.body.cost !== undefined ? Number(req.body.cost) : asset.cost,
+    warrantyStartDate: req.body.warrantyStartDate ?? asset.warrantyStartDate,
+    warrantyExpiryDate: req.body.warrantyExpiryDate ?? asset.warrantyExpiryDate,
+    warrantyProvider: req.body.warrantyProvider ?? asset.warrantyProvider,
+    warrantyDetails: req.body.warrantyDetails ?? asset.warrantyDetails,
     location: req.body.location ?? asset.location,
     serialNumber: req.body.serialNumber ?? asset.serialNumber,
     assignedTo: nextAssignedToRaw,
@@ -233,6 +271,31 @@ export const updateAsset = async (req, res) => {
   }
 
   await asset.save();
+
+  const afterSnapshot = buildAssetSnapshot(
+    asset,
+    await resolveAssignedLabel(asset.assignedTo, asset.assignedGroup)
+  );
+  const changes = diffAssetSnapshots(beforeSnapshot, afterSnapshot);
+
+  if (changes.length || req.body.note) {
+    const auditAction = assignmentChanged ? (nextAssignedToRaw ? "ASSIGN" : "UNASSIGN") : "UPDATE";
+    const summaryByAction = {
+      ASSIGN: `Assigned ${asset.uniqueAssetId} to ${afterSnapshot.assignedLabel}`,
+      UNASSIGN: `Unassigned ${asset.uniqueAssetId} from ${beforeSnapshot.assignedLabel}`,
+      UPDATE: `Updated ${changes.length} field${changes.length === 1 ? "" : "s"} on ${asset.uniqueAssetId}`
+    };
+
+    await recordAssetAudit({
+      asset,
+      action: auditAction,
+      user: req.user,
+      summary: summaryByAction[auditAction],
+      note: req.body.note || "",
+      changes
+    });
+  }
+
   res.status(StatusCodes.OK).json({ asset });
 };
 
@@ -271,6 +334,20 @@ export const recordAssetMovement = async (req, res) => {
   await asset.populate("movements.employee", "name email employeeCode");
   await asset.populate("movements.recordedBy", "name email role");
 
+  const movedBy = await resolveAssignedLabel(asset.assignedTo, asset.assignedGroup);
+  await recordAssetAudit({
+    asset,
+    action: "MOVEMENT",
+    user: req.user,
+    summary: `Marked ${asset.uniqueAssetId} ${req.body.action === "OUT" ? "out" : "in"} for ${movedBy}`,
+    note: req.body.note || "",
+    changes: [
+      { field: "movement", label: "Action", from: "", to: req.body.action },
+      { field: "movementReason", label: "Reason", from: "", to: req.body.reason || "" },
+      { field: "movementDate", label: "Date", from: "", to: new Date(req.body.date).toISOString() }
+    ]
+  });
+
   res.status(StatusCodes.OK).json({ asset });
 };
 
@@ -290,6 +367,18 @@ export const recordAssetComplaint = async (req, res) => {
 
   await asset.save();
 
+  await recordAssetAudit({
+    asset,
+    action: "COMPLAINT",
+    user: req.user,
+    summary: `Logged a complaint on ${asset.uniqueAssetId}`,
+    note: req.body.details || "",
+    changes: [
+      { field: "complaint", label: "Complaint", from: "", to: req.body.details || "" },
+      { field: "complaintDate", label: "Complaint Date", from: "", to: new Date(req.body.date).toISOString() }
+    ]
+  });
+
   res.status(StatusCodes.OK).json({ asset });
 };
 
@@ -299,6 +388,59 @@ export const deleteAsset = async (req, res) => {
     throw new AppError("Asset not found", StatusCodes.NOT_FOUND);
   }
 
+  const snapshot = buildAssetSnapshot(
+    asset,
+    await resolveAssignedLabel(asset.assignedTo, asset.assignedGroup)
+  );
+
   await asset.deleteOne();
+
+  await recordAssetAudit({
+    asset,
+    action: "DELETE",
+    user: req.user,
+    summary: `Deleted asset ${asset.uniqueAssetId}`,
+    // Record the final state as from → (removed) so the trail keeps what was lost.
+    changes: diffAssetSnapshots(snapshot, {})
+  });
+
   res.status(StatusCodes.OK).json({ message: "Asset deleted successfully" });
+};
+
+export const getAssetAuditLogs = async (req, res) => {
+  const filter = {};
+  if (req.query.action) filter.action = req.query.action;
+  if (req.query.assetId && mongoose.isValidObjectId(req.query.assetId)) {
+    filter.asset = new mongoose.Types.ObjectId(req.query.assetId);
+  }
+  if (req.query.performedBy && mongoose.isValidObjectId(req.query.performedBy)) {
+    filter.performedBy = new mongoose.Types.ObjectId(req.query.performedBy);
+  }
+  if (req.query.dateFrom || req.query.dateTo) {
+    filter.createdAt = {};
+    if (req.query.dateFrom) filter.createdAt.$gte = new Date(req.query.dateFrom);
+    if (req.query.dateTo) filter.createdAt.$lte = new Date(req.query.dateTo);
+  }
+  if (req.query.search) {
+    const regex = { $regex: req.query.search, $options: "i" };
+    filter.$or = [
+      { uniqueAssetId: regex },
+      { assetName: regex },
+      { performedByName: regex },
+      { summary: regex }
+    ];
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+  const [logs, total] = await Promise.all([
+    AssetAuditLog.find(filter)
+      .populate("performedBy", "name email role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    AssetAuditLog.countDocuments(filter)
+  ]);
+
+  res.status(StatusCodes.OK).json({ logs, ...buildPaginatedResponse({ items: logs, total, page, limit }) });
 };

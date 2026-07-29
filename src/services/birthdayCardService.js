@@ -4,6 +4,7 @@ import fs from "fs";
 import https from "https";
 import http from "http";
 import { fileURLToPath } from "url";
+import { loadLocalImageBuffer } from "./mediaService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -292,8 +293,9 @@ const buildAnniversaryTextOverlaySvg = ({ width, height, name, role, years, ordi
 
 /**
  * Load an image as a Buffer.
- *  – Paths containing "/uploads/" are resolved directly from the local
- *    filesystem (same server, no extra HTTP round-trip).
+ *  – URLs pointing at our own DB-backed endpoints (/api/media/:id,
+ *    /api/users/:id/photo) are read straight from MongoDB — no HTTP round-trip.
+ *  – Legacy paths containing "/uploads/" are resolved from the local filesystem.
  *  – All other URLs are fetched via HTTP/HTTPS with a 5-second timeout.
  * Returns null when the URL is absent, the file does not exist, or the fetch
  * fails for any reason.
@@ -302,7 +304,11 @@ async function loadImageBuffer(url) {
   if (!url) return null;
 
   try {
-    // Try local filesystem resolution first
+    // Database-backed media (profile photos, previously uploaded assets)
+    const dbBuffer = await loadLocalImageBuffer(url);
+    if (dbBuffer) return dbBuffer;
+
+    // Legacy on-disk uploads
     const marker = "/uploads/";
     if (url.includes(marker)) {
       const relativePath = url.slice(url.indexOf(marker) + 1);
@@ -394,14 +400,12 @@ function buildTextOverlaySvg({ width, height, name, role, nameY, roleY }) {
  * @param {string}  p.name             Employee full name
  * @param {string}  p.role             Employee designation / role title
  * @param {string}  [p.profilePhotoUrl] Full URL of the employee profile photo
- * @param {string}  p.outputDir        Directory to write the generated image
- * @param {string}  p.baseUrl          Backend origin, e.g. "http://localhost:5000"
  *
- * @returns {Promise<{url: string, localPath: string} | null>}
- *   Both the public-facing URL and the absolute local path of the generated
- *   PNG, or null if generation fails (birthday announcement still proceeds).
+ * @returns {Promise<{buffer: Buffer, mime: string, filename: string} | null>}
+ *   The rendered PNG bytes (the caller persists them via mediaService), or null
+ *   if generation fails (the birthday announcement still proceeds).
  */
-export async function generateBirthdayCard({ name, role, profilePhotoUrl, outputDir, baseUrl }) {
+export async function generateBirthdayCard({ name, role, profilePhotoUrl }) {
   try {
     if (!fs.existsSync(TEMPLATE_PATH)) {
       console.error("[birthdayCard] Template PNG not found at:", TEMPLATE_PATH);
@@ -447,17 +451,14 @@ export async function generateBirthdayCard({ name, role, profilePhotoUrl, output
       top:  0,
     });
 
-    // ── Render to file ─────────────────────────────────────────────────────
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    // ── Render to a buffer (stored in MongoDB by the caller) ───────────────
+    const buffer = await sharp(templateBuffer).composite(composites).png().toBuffer();
 
-    const filename  = `birthday-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`;
-    const localPath = path.join(outputDir, filename);
-
-    await sharp(templateBuffer).composite(composites).png().toFile(localPath);
-
-    return { url: `${baseUrl}/uploads/announcements/${filename}`, localPath };
+    return {
+      buffer,
+      mime: "image/png",
+      filename: `birthday-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`
+    };
   } catch (err) {
     console.error("[birthdayCard] Generation failed:", err.message);
     return null;
@@ -474,7 +475,12 @@ const getAnniversaryYears = (joiningDate, referenceDate = new Date()) => {
   return Math.max(years, 1);
 };
 
-export async function generateAnniversaryCard({ name, role, profilePhotoUrl, joiningDate, outputDir, baseUrl }) {
+/**
+ * Compose a work-anniversary card.
+ *
+ * @returns {Promise<{buffer: Buffer, mime: string, filename: string} | null>}
+ */
+export async function generateAnniversaryCard({ name, role, profilePhotoUrl, joiningDate }) {
   try {
     if (!fs.existsSync(ANNIVERSARY_TEMPLATE_PATH)) {
       console.error("[anniversaryCard] Template PNG not found at:", ANNIVERSARY_TEMPLATE_PATH);
@@ -522,16 +528,13 @@ export async function generateAnniversaryCard({ name, role, profilePhotoUrl, joi
       top:  0
     });
 
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    const buffer = await sharp(templateBuffer).composite(composites).png().toBuffer();
 
-    const filename  = `anniversary-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`;
-    const localPath = path.join(outputDir, filename);
-
-    await sharp(templateBuffer).composite(composites).png().toFile(localPath);
-
-    return { url: `${baseUrl}/uploads/announcements/${filename}`, localPath };
+    return {
+      buffer,
+      mime: "image/png",
+      filename: `anniversary-${Date.now()}-${Math.round(Math.random() * 1e6)}.png`
+    };
   } catch (err) {
     console.error("[anniversaryCard] Generation failed:", err.message);
     return null;

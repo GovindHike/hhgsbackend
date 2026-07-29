@@ -3,6 +3,18 @@ import { Announcement, ANNOUNCEMENT_REACTION_TYPES } from "../models/Announcemen
 import { createNotification } from "../services/notificationService.js";
 import { User } from "../models/User.js";
 import { isAdminRole } from "../utils/constants.js";
+import { deleteMediaByUrls } from "../services/mediaService.js";
+
+const mediaUrls = (media = []) => media.map((item) => item?.url).filter(Boolean);
+
+/** Drop DB-stored bytes that are no longer referenced by the announcement. */
+const removeOrphanedMedia = async (previousMedia, nextMedia) => {
+  const keep = new Set(mediaUrls(nextMedia));
+  const orphans = mediaUrls(previousMedia).filter((url) => !keep.has(url));
+  if (orphans.length) {
+    await deleteMediaByUrls(orphans);
+  }
+};
 
 const populateAnnouncement = (query) =>
   query
@@ -60,11 +72,17 @@ export const updateAnnouncement = async (req, res) => {
   }
 
   const { title, content, media } = req.body;
+  const previousMedia = announcement.media?.map((item) => ({ url: item.url })) || [];
   if (content !== undefined) announcement.content = content.trim();
   if (title !== undefined) announcement.title = title.trim();
   if (Array.isArray(media)) announcement.media = media;
 
   await announcement.save();
+
+  if (Array.isArray(media)) {
+    await removeOrphanedMedia(previousMedia, media);
+  }
+
   const updated = await populateAnnouncement(Announcement.findById(announcement._id));
   return res.status(StatusCodes.OK).json({ announcement: updated });
 };
@@ -107,6 +125,7 @@ export const deleteAnnouncement = async (req, res) => {
   }
 
   await Announcement.findByIdAndDelete(req.params.id);
+  await removeOrphanedMedia(announcement.media, []);
   return res.status(StatusCodes.OK).json({ message: "Announcement deleted" });
 };
 

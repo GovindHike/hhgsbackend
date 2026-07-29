@@ -62,7 +62,13 @@ export const createApp = () => {
       limit: env.rateLimitMax,
       standardHeaders: true,
       legacyHeaders: false,
-      skip: (req) => req.method === "OPTIONS" || req.path === "/health" || req.path.startsWith("/api/auth"),
+      // Media is served from MongoDB through /api/media — treat it like the
+      // static asset requests it replaced and keep it out of the API budget.
+      skip: (req) =>
+        req.method === "OPTIONS"
+        || req.path === "/health"
+        || req.path.startsWith("/api/auth")
+        || req.path.startsWith("/api/media"),
       handler: (req, res) => {
         res.status(429).json({
           message: "Too many requests, please try again later.",

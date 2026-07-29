@@ -699,7 +699,9 @@ async function uploadImageToLinkedIn(localImagePath, ownerUrn, accessToken) {
  * @param {string} p.name            Employee full name
  * @param {string} p.role            Employee designation
  * @param {string} p.commentary      Post caption text
- * @param {string} p.localImagePath  Absolute path to the generated birthday card PNG
+ * @param {Buffer} [p.imageBuffer]   Generated card bytes (preferred — cards live in MongoDB)
+ * @param {string} [p.imageMime]     MIME type of imageBuffer, defaults to image/png
+ * @param {string} [p.localImagePath] Legacy: absolute path to a card PNG on disk
  */
 
 // ---------------------------------------------------------------------------
@@ -792,7 +794,7 @@ export async function exchangeLinkedInAuthCode(code, redirectUri) {
   return payload;
 }
 
-export async function postBirthdayToLinkedIn({ name, role, commentary, localImagePath }) {
+export async function postBirthdayToLinkedIn({ name, role, commentary, imageBuffer: providedImageBuffer, imageMime, localImagePath }) {
   if (!env.linkedInEnabled) {
     throw new Error("LinkedIn integration is disabled");
   }
@@ -828,12 +830,15 @@ export async function postBirthdayToLinkedIn({ name, role, commentary, localImag
     }
   }
 
-  if (!localImagePath) {
-    throw new Error("LinkedIn birthday post requires a generated image path.");
+  if (!providedImageBuffer?.length && !localImagePath) {
+    throw new Error("LinkedIn birthday post requires the generated card image.");
   }
 
-  const imageBuffer = fs.readFileSync(localImagePath);
-  const mimeType = localImagePath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+  // Cards are generated in memory and stored in MongoDB; localImagePath remains
+  // supported for any caller that still works from a file on disk.
+  const imageBuffer = providedImageBuffer?.length ? providedImageBuffer : fs.readFileSync(localImagePath);
+  const mimeType = imageMime
+    || (localImagePath && !localImagePath.toLowerCase().endsWith(".png") ? "image/jpeg" : "image/png");
   const postResult = await postImageToLinkedIn({
     accessToken,
     personId,

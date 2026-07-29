@@ -30,7 +30,70 @@ export const TASK_STATUSES = ["Backlog", "Ready", "In Progress", "QA Needed", "C
 export const TASK_CATEGORIES = ["Bug/Issue", "Enhancement", "Feature"];
 export const LEAVE_STATUSES = ["Pending", "Approved", "Rejected", "Cancelled"];
 export const ASSET_STATUSES = ["Available", "Assigned", "Maintenance", "Repair", "Retired"];
+export const ASSET_CATEGORIES = ["Computer and Accessories", "Furniture and Equipment"];
+export const ASSET_SUBCATEGORIES = {
+  "Computer and Accessories": [
+    "Laptop",
+    "Desktop",
+    "Monitor",
+    "Keyboard",
+    "Mouse",
+    "Printer",
+    "Scanner",
+    "UPS",
+    "Router",
+    "Switch",
+    "Headset",
+    "Webcam",
+    "Hard Disk",
+    "Pen Drive",
+    "Cables & Adapters",
+    "Mobile Phone",
+    "Projector"
+  ],
+  "Furniture and Equipment": [
+    "Chair",
+    "Table",
+    "Desk",
+    "Cabinet",
+    "Almirah",
+    "Sofa",
+    "Air Conditioner",
+    "Fan",
+    "Water Purifier",
+    "Refrigerator",
+    "Whiteboard",
+    "Shelf",
+    "Lighting"
+  ]
+};
+
+export const ASSET_AUDIT_ACTIONS = [
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "ASSIGN",
+  "UNASSIGN",
+  "COMPLAINT",
+  "MOVEMENT"
+];
 
 export const SHIFT_TYPES = ["Shift 1", "Shift 2"];
 
 export const IDLE_THRESHOLD_MINUTES = 10;
+
+/** Field types a statutory register column can be configured as. */
+export const REGISTER_FIELD_TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "currency",
+  "date",
+  "time",
+  "select",
+  "multiselect",
+  "boolean",
+  "email",
+  "phone",
+  "employee"
+];
