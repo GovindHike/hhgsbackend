@@ -52,19 +52,9 @@ export const ASSET_SUBCATEGORIES = {
     "Projector"
   ],
   "Furniture and Equipment": [
-    "Chair",
-    "Table",
-    "Desk",
-    "Cabinet",
-    "Almirah",
-    "Sofa",
-    "Air Conditioner",
-    "Fan",
-    "Water Purifier",
-    "Refrigerator",
-    "Whiteboard",
-    "Shelf",
-    "Lighting"
+    "Furnishing and Fixtures",
+    "Office Furniture",
+    "Electrical Appliances and Office Equipment"
   ]
 };
 
